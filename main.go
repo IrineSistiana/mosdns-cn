@@ -32,6 +32,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,6 +58,9 @@ func main() {
 	if err != nil { // error msg has been printed by flags
 		os.Exit(1)
 	}
+
+	mlog.S().Infof("mosdns-cn ver: %s", version)
+	mlog.S().Infof("arch: %s, os: %s, go: %s", runtime.GOARCH, runtime.GOOS, runtime.Version())
 
 	go run()
 
@@ -109,28 +113,28 @@ func run() {
 	if len(Opts.LocalDomain) > 0 {
 		mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
 		if err := batchLoadDomainFile(mixMatcher, Opts.LocalDomain); err != nil {
-			mlog.S().Fatalf("Failed to load local domain: %v", err)
+			mlog.S().Fatalf("failed to load local domain: %v", err)
 		}
-		mlog.S().Infof("Local domain matcher loaded, length: %d", mixMatcher.Len())
+		mlog.S().Infof("local domain matcher loaded, length: %d", mixMatcher.Len())
 		h.localDomain = msg_matcher.NewQNameMatcher(mixMatcher)
 	}
 
 	if len(Opts.RemoteDomain) > 0 {
 		mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
 		if err := batchLoadDomainFile(mixMatcher, Opts.RemoteDomain); err != nil {
-			mlog.S().Fatalf("Failed to load remote domain: %v", err)
+			mlog.S().Fatalf("failed to load remote domain: %v", err)
 		}
-		mlog.S().Infof("Remote domain matcher loaded, length: %d", mixMatcher.Len())
+		mlog.S().Infof("remote domain matcher loaded, length: %d", mixMatcher.Len())
 		h.remoteDomain = msg_matcher.NewQNameMatcher(mixMatcher)
 	}
 
 	// Opts.LocalIP is required
 	nl := netlist.NewList()
 	if err := batchLoadIPFile(nl, Opts.LocalIP); err != nil {
-		mlog.S().Fatalf("Failed to load local ip: %v", err)
+		mlog.S().Fatalf("failed to load local ip: %v", err)
 	}
 	nl.Sort()
-	mlog.S().Infof("Local IP matcher loaded, length: %d", nl.Len())
+	mlog.S().Infof("local IP matcher loaded, length: %d", nl.Len())
 	h.localIP = msg_matcher.NewAAAAAIPMatcher(nl)
 
 	h.localLatency = time.Millisecond * time.Duration(Opts.LocalLatency)

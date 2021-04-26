@@ -32,6 +32,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -80,14 +81,9 @@ func run() {
 	}
 
 	for i, s := range Opts.LocalUpstream {
-		addr, socks5, netAddr, err := splitArgs(s)
+		fu, err := initFastUpstream(s)
 		if err != nil {
-			mlog.S().Fatalf("Failed to parse local upstream #%d: %v", i, err)
-		}
-
-		fu, err := upstream.NewFastUpstream(addr, upstream.WithSocks5(socks5), upstream.WithDialAddr(netAddr))
-		if err != nil {
-			mlog.S().Fatalf("Failed to load local upstream #%d: %v", i, err)
+			mlog.S().Fatalf("Failed to init local upstream #%d: %v", i, err)
 		}
 
 		trusted := false
@@ -98,14 +94,9 @@ func run() {
 	}
 
 	for i, s := range Opts.RemoteUpstream {
-		addr, socks5, netAddr, err := splitArgs(s)
+		fu, err := initFastUpstream(s)
 		if err != nil {
-			mlog.S().Fatalf("Failed to parse remote upstream #%d: %v", i, err)
-		}
-
-		fu, err := upstream.NewFastUpstream(addr, upstream.WithSocks5(socks5), upstream.WithDialAddr(netAddr))
-		if err != nil {
-			mlog.S().Fatalf("Failed to load remote upstream #%d: %v", i, err)
+			mlog.S().Fatalf("Failed to init remote upstream #%d: %v", i, err)
 		}
 
 		trusted := false
@@ -146,7 +137,6 @@ func run() {
 
 	udpServer := server.NewServer("udp", Opts.ServerAddr, server.WithHandler(h))
 	tcpServer := server.NewServer("tcp", Opts.ServerAddr, server.WithHandler(h))
-
 	go func() {
 		err := udpServer.Start()
 		if err != nil {
@@ -161,24 +151,31 @@ func run() {
 		}
 	}()
 
+	mlog.S().Info("server started")
 	select {}
 }
 
-func splitArgs(s string) (addr string, socks5 string, netAddr string, err error) {
-	// parse protocol and server addr
+func initFastUpstream(s string) (*upstream.FastUpstream, error) {
 	if !strings.Contains(s, "://") {
 		s = "udp://" + s
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return "", "", "", fmt.Errorf("invalid upstream address, %w", err)
+		return nil, fmt.Errorf("invalid upstream address, %w", err)
 	}
 	v := u.Query()
-	socks5 = v.Get("socks5")
-	netAddr = v.Get("netaddr")
 	u.RawQuery = ""
-	addr = u.String()
-	return addr, socks5, netAddr, nil
+	opts := make([]upstream.Option, 0)
+	opts = append(opts, upstream.WithDialAddr(v.Get("netaddr")), upstream.WithSocks5(v.Get("socks5")))
+	if s := v.Get("keepalive"); len(s) != 0 {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return nil, fmt.Errorf("invalid upstream keepalive arg, %w", err)
+		}
+		opts = append(opts, upstream.WithIdleTimeout(time.Duration(n)*time.Second))
+	}
+
+	return upstream.NewFastUpstream(u.String(), opts...)
 }
 
 func batchLoadDomainFile(m *domain.MixMatcher, files []string) error {

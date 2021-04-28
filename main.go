@@ -18,9 +18,12 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"github.com/IrineSistiana/mosdns/dispatcher/mlog"
+	"github.com/IrineSistiana/mosdns/dispatcher/pkg/arbitrary"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/cache/mem_cache"
+	"github.com/IrineSistiana/mosdns/dispatcher/pkg/hosts"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/matcher/domain"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/matcher/msg_matcher"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/matcher/netlist"
@@ -42,15 +45,24 @@ import (
 var version = "dev/unknown"
 
 var Opts struct {
-	ServerAddr     string   `short:"s" long:"server" description:"Server address" required:"true"`
-	CacheSize      int      `short:"c" long:"cache" description:"Cache size"`
-	LocalUpstream  []string `long:"local-upstream" description:"Local upstream" required:"true"`
-	LocalIP        []string `long:"local-ip" description:"Local ip" required:"true"`
+	ServerAddr      string   `short:"s" long:"server" description:"Server address" required:"true"`
+	CacheSize       int      `short:"c" long:"cache" description:"Cache size"`
+	Hosts           []string `long:"hosts" description:"Hosts"`
+	Arbitrary       []string `long:"arbitrary" description:"Arbitrary record"`
+	BlacklistDomain []string `long:"blacklist-domain" description:"Blacklist domain"`
+
+	// simple forwarder
+	Upstream []string `long:"upstream" description:"Upstream"`
+
+	// local/remote forwarder
+	LocalUpstream  []string `long:"local-upstream" description:"Local upstream"` // required if Upstream is empty
+	LocalIP        []string `long:"local-ip" description:"Local ip"`
 	LocalDomain    []string `long:"local-domain" description:"Local domain"`
 	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds" default:"50"`
-	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream" required:"true"`
+	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
-	Debug          bool     `short:"v" long:"debug" description:"Verbose log"`
+
+	Debug bool `short:"v" long:"debug" description:"Verbose log"`
 }
 
 func main() {
@@ -78,67 +90,11 @@ func run() {
 		mlog.Level().SetLevel(zap.InfoLevel)
 	}
 
-	h := new(cnHandler)
-
-	if Opts.CacheSize > 8 {
-		h.cache = mem_cache.NewMemCache(8, Opts.CacheSize/8, time.Minute)
+	h, err := initHandler()
+	if err != nil {
+		mlog.S().Fatal(err)
 	}
-
-	for i, s := range Opts.LocalUpstream {
-		fu, err := initFastUpstream(s)
-		if err != nil {
-			mlog.S().Fatalf("Failed to init local upstream #%d: %v", i, err)
-		}
-
-		trusted := false
-		if i == 0 {
-			trusted = true
-		}
-		h.localUpstream = append(h.localUpstream, wrapFU(fu, trusted))
-	}
-
-	for i, s := range Opts.RemoteUpstream {
-		fu, err := initFastUpstream(s)
-		if err != nil {
-			mlog.S().Fatalf("Failed to init remote upstream #%d: %v", i, err)
-		}
-
-		trusted := false
-		if i == 0 {
-			trusted = true
-		}
-		h.remoteUpstream = append(h.remoteUpstream, wrapFU(fu, trusted))
-	}
-
-	if len(Opts.LocalDomain) > 0 {
-		mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
-		if err := batchLoadDomainFile(mixMatcher, Opts.LocalDomain); err != nil {
-			mlog.S().Fatalf("failed to load local domain: %v", err)
-		}
-		mlog.S().Infof("local domain matcher loaded, length: %d", mixMatcher.Len())
-		h.localDomain = msg_matcher.NewQNameMatcher(mixMatcher)
-	}
-
-	if len(Opts.RemoteDomain) > 0 {
-		mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
-		if err := batchLoadDomainFile(mixMatcher, Opts.RemoteDomain); err != nil {
-			mlog.S().Fatalf("failed to load remote domain: %v", err)
-		}
-		mlog.S().Infof("remote domain matcher loaded, length: %d", mixMatcher.Len())
-		h.remoteDomain = msg_matcher.NewQNameMatcher(mixMatcher)
-	}
-
-	// Opts.LocalIP is required
-	nl := netlist.NewList()
-	if err := batchLoadIPFile(nl, Opts.LocalIP); err != nil {
-		mlog.S().Fatalf("failed to load local ip: %v", err)
-	}
-	nl.Sort()
-	mlog.S().Infof("local IP matcher loaded, length: %d", nl.Len())
-	h.localIP = msg_matcher.NewAAAAAIPMatcher(nl)
-
-	h.localLatency = time.Millisecond * time.Duration(Opts.LocalLatency)
-
+	// start servers
 	udpServer := server.NewServer("udp", Opts.ServerAddr, server.WithHandler(h))
 	tcpServer := server.NewServer("tcp", Opts.ServerAddr, server.WithHandler(h))
 	go func() {
@@ -157,6 +113,111 @@ func run() {
 
 	mlog.S().Info("server started")
 	select {}
+}
+
+func initHandler() (*cnHandler, error) {
+	h := new(cnHandler)
+
+	if Opts.CacheSize > 8 {
+		h.cache = mem_cache.NewMemCache(8, Opts.CacheSize/8, time.Minute)
+	}
+
+	if len(Opts.Hosts) > 0 {
+		hs, err := hosts.NewHostsFromFiles(Opts.Hosts)
+		if err != nil {
+			mlog.S().Fatalf("failed to init hosts: %v", err)
+		}
+		h.hosts = hs
+	}
+
+	if len(Opts.Arbitrary) > 0 {
+		a := arbitrary.NewArbitrary()
+
+		if err := a.BatchLoadFiles(Opts.Arbitrary); err != nil {
+			mlog.S().Fatalf("failed to init arbitrary: %v", err)
+		}
+		h.arbitrary = a
+	}
+
+	if len(Opts.BlacklistDomain) > 0 {
+		loadDomainMatcher("blacklist", Opts.BlacklistDomain, &h.blacklistDomainMatcher)
+	}
+
+	for i, s := range Opts.Upstream {
+		fu, err := initFastUpstream(s)
+		if err != nil {
+			mlog.S().Fatalf("failed to init upstream #%d: %v", i, err)
+		}
+
+		trusted := false
+		if i == 0 {
+			trusted = true
+		}
+		h.upstream = append(h.upstream, wrapFU(fu, trusted))
+	}
+
+	// check args
+	if len(h.upstream) > 0 {
+		return h, nil // This simple forward mode. Skip the followings.
+	}
+
+	if len(Opts.LocalUpstream) == 0 {
+		return nil, errors.New("missing local upstream")
+	}
+	if len(Opts.RemoteUpstream) == 0 {
+		return nil, errors.New("missing remote upstream")
+	}
+	if len(Opts.LocalIP) == 0 {
+		return nil, errors.New("missing local ip")
+	}
+
+	for i, s := range Opts.LocalUpstream {
+		fu, err := initFastUpstream(s)
+		if err != nil {
+			mlog.S().Fatalf("failed to init local upstream #%d: %v", i, err)
+		}
+
+		trusted := false
+		if i == 0 {
+			trusted = true
+		}
+		h.localUpstream = append(h.localUpstream, wrapFU(fu, trusted))
+	}
+
+	if len(Opts.LocalIP) > 0 {
+		nl := netlist.NewList()
+		if err := netlist.BatchLoadFromFiles(nl, Opts.LocalIP); err != nil {
+			mlog.S().Fatalf("failed to load local ip: %v", err)
+		}
+		nl.Sort()
+		mlog.S().Infof("local IP matcher loaded, length: %d", nl.Len())
+		h.localIPMatcher = msg_matcher.NewAAAAAIPMatcher(nl)
+	}
+
+	if len(Opts.LocalDomain) > 0 {
+		loadDomainMatcher("local", Opts.LocalDomain, &h.localDomainMatcher)
+	}
+
+	h.localLatency = time.Millisecond * time.Duration(Opts.LocalLatency)
+
+	for i, s := range Opts.RemoteUpstream {
+		fu, err := initFastUpstream(s)
+		if err != nil {
+			mlog.S().Fatalf("failed to init remote upstream #%d: %v", i, err)
+		}
+
+		trusted := false
+		if i == 0 {
+			trusted = true
+		}
+		h.remoteUpstream = append(h.remoteUpstream, wrapFU(fu, trusted))
+	}
+
+	if len(Opts.RemoteDomain) > 0 {
+		loadDomainMatcher("remote", Opts.RemoteDomain, &h.remoteDomainMatcher)
+	}
+
+	return h, nil
 }
 
 func initFastUpstream(s string) (*upstream.FastUpstream, error) {
@@ -182,20 +243,11 @@ func initFastUpstream(s string) (*upstream.FastUpstream, error) {
 	return upstream.NewFastUpstream(u.String(), opts...)
 }
 
-func batchLoadDomainFile(m *domain.MixMatcher, files []string) error {
-	for _, f := range files {
-		if err := domain.LoadFromFile(m, f, nil); err != nil {
-			return err
-		}
+func loadDomainMatcher(name string, files []string, to **msg_matcher.QNameMatcher) {
+	mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
+	if err := domain.BatchLoadMatcherFromFiles(mixMatcher, files, nil); err != nil {
+		mlog.S().Fatalf("failed to load %s domain: %v", name, err)
 	}
-	return nil
-}
-
-func batchLoadIPFile(l *netlist.List, files []string) error {
-	for _, f := range files {
-		if err := netlist.LoadFromFile(l, f); err != nil {
-			return err
-		}
-	}
-	return nil
+	mlog.S().Infof("%s domain matcher loaded, length: %d", name, mixMatcher.Len())
+	*to = msg_matcher.NewQNameMatcher(mixMatcher)
 }

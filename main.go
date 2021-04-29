@@ -70,7 +70,7 @@ var Opts struct {
 	WorkingDir   string `long:"dir" description:"Working dir"`
 	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically"`
 	Service      string `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart"`
-	RunAsService bool   `short:"S" description:"Run as a system service" hidden:""`
+	RunAsService bool   `short:"S" description:"Run as a system service" hidden:"true"`
 }
 
 func main() {

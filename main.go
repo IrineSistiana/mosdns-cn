@@ -31,10 +31,13 @@ import (
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/server"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/upstream"
 	"github.com/jessevdk/go-flags"
+	"github.com/kardianos/service"
 	"go.uber.org/zap"
+	"io"
 	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -45,7 +48,7 @@ import (
 var version = "dev/unknown"
 
 var Opts struct {
-	ServerAddr      string   `short:"s" long:"server" description:"Server address" required:"true"`
+	ServerAddr      string   `short:"s" long:"server" description:"Server address"`
 	CacheSize       int      `short:"c" long:"cache" description:"Cache size"`
 	Hosts           []string `long:"hosts" description:"Hosts"`
 	Arbitrary       []string `long:"arbitrary" description:"Arbitrary record"`
@@ -62,7 +65,12 @@ var Opts struct {
 	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
 
-	Debug bool `short:"v" long:"debug" description:"Verbose log"`
+	Debug        bool   `short:"v" long:"debug" description:"Verbose log"`
+	LogFile      string `long:"log-file" description:"Write logs to a file"`
+	WorkingDir   string `long:"dir" description:"Working dir"`
+	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically"`
+	Service      string `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart"`
+	RunAsService bool   `short:"S" description:"Run as a system service" hidden:""`
 }
 
 func main() {
@@ -71,24 +79,103 @@ func main() {
 		os.Exit(1)
 	}
 
-	mlog.S().Infof("mosdns-cn ver: %s", version)
-	mlog.S().Infof("arch: %s, os: %s, go: %s", runtime.GOARCH, runtime.GOOS, runtime.Version())
-
-	go run()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGTERM)
-	s := <-c
-	mlog.S().Infof("%s, exiting", s)
-	os.Exit(0)
-}
-
-func run() {
 	if Opts.Debug {
 		mlog.Level().SetLevel(zap.DebugLevel)
 	} else {
 		mlog.Level().SetLevel(zap.InfoLevel)
 	}
+
+	if Opts.CD2Exe {
+		execPath, err := os.Executable()
+		if err != nil {
+			mlog.S().Fatalf("failed to get the executable path: %v", err)
+		}
+		wd := filepath.Dir(execPath)
+		if err := os.Chdir(wd); err != nil {
+			mlog.S().Fatalf("failed to change the current working directory: %v", err)
+		}
+		mlog.S().Infof("current working directory is %s", wd)
+	}
+
+	if len(Opts.Service) == 0 && !Opts.RunAsService {
+		go run()
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGTERM)
+		s := <-c
+		mlog.S().Infof("%s, exiting", s)
+		os.Exit(0)
+	}
+
+	svcConfig := &service.Config{
+		Name:        "mosdns-cn",
+		DisplayName: "mosdns-cn",
+		Description: "A DNS forwarder",
+	}
+
+	svc := new(svc)
+	s, err := service.New(svc, svcConfig)
+	if err != nil {
+		mlog.S().Fatalf("failed to init service: %v", err)
+	}
+
+	if Opts.RunAsService {
+		if err := s.Run(); err != nil {
+			mlog.S().Fatalf("service failed: %v", err)
+		}
+		os.Exit(0)
+	}
+
+	switch Opts.Service {
+	case "install":
+		args := os.Args[1:]
+		if len(Opts.WorkingDir) == 0 {
+			args = append(args, "--cd2exe")
+		}
+		args = append(args, "-S") // run as a service
+		svcConfig.Arguments = args
+		err = s.Install()
+	case "uninstall":
+		err = s.Uninstall()
+	case "start":
+		err = s.Start()
+	case "stop":
+		err = s.Stop()
+	case "restart":
+		err = s.Restart()
+	default:
+		mlog.S().Fatalf("unknown service action [%s]", Opts.Service)
+	}
+	if err != nil {
+		mlog.S().Fatalf("%s: %v", Opts.Service, err)
+	} else {
+		mlog.S().Infof("%s: done", Opts.Service)
+		os.Exit(0)
+	}
+}
+
+type svc struct{}
+
+func (m *svc) Start(s service.Service) error {
+	go run()
+	return nil
+}
+
+func (m *svc) Stop(s service.Service) error {
+	return nil
+}
+
+func run() {
+	if len(Opts.LogFile) > 0 {
+		f, err := os.OpenFile(Opts.LogFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+		if err != nil {
+			mlog.S().Fatalf("can not open log file: %v", err)
+		}
+		io.MultiWriter()
+		mlog.Writer().Replace(f)
+	}
+
+	mlog.S().Infof("mosdns ver: %s", version)
+	mlog.S().Infof("arch: %s, os: %s, go: %s", runtime.GOARCH, runtime.GOOS, runtime.Version())
 
 	h, err := initHandler()
 	if err != nil {

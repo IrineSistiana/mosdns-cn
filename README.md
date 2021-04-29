@@ -3,14 +3,13 @@
 一个 DNS 转发器。
 
 - 支持缓存。
-- 支持 hosts。 
-- 支持 NXDOMAIN 屏蔽。
-- 上游服务器支持 UDP/TCP/DoT/DoH 协议。
-- 支持通过 Socks5 连接上游服务器。
+- 支持 hosts。
+- 支持 NXDOMAIN 屏蔽。可屏蔽广告等域名。
+- 上游服务器支持 UDP/TCP/DoT/DoH 协议。支持 socks5 代理。
 - 支持根据域名和 IP 实现本地/远程 DNS 分流。
-  - 支持常见的域名表格式。(一行一个域名)
-  - 支持常见的 IP 表格式。(一行一个 CIDR)
-  - 支持直接从 v2ray `dat` 文件载入域名和 IP 数据。
+    - 支持常见的域名和 IP 表格式。(一行一个域名, CIDR)
+    - 支持直接从 v2ray `dat` 文件载入域名和 IP 数据。
+- 无需配置。一键安装。开箱即用。
 
 ## 参数
 
@@ -22,7 +21,7 @@
       --blacklist-domain: (可选) 黑名单域名表。这些域名会被用 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
       
   # 如果无需分流，配置这个参数:
-      --upstream:         上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
+      --upstream:         (必需) 上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
   
   # 如果需要分流，配置以下参数:
       --local-upstream:   (必需) 本地上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
@@ -33,6 +32,10 @@
       --remote-domain:    (可选) 远程域名表。这些域名一定会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
 
   -v, --debug             Verbose log
+      --log-file:         将日志写入文件。
+      --dir:              工作目录。
+      --cd2exe            自动将可执行文件的目录作为工作目录。
+      --service:[install|uninstall|start|stop|restart] 控制系统服务。
 ```
 
 ### 上游
@@ -87,7 +90,7 @@
 - 以 `keyword:` 开头，关键字匹配。
 - 以 `regexp:` 开头，正则匹配(Golang 标准)。
 
-示例: 
+示例:
 
 ```txt
 dns.google 8.8.8.8 2001:4860:4860::8888
@@ -95,9 +98,9 @@ dns.google 8.8.8.8 2001:4860:4860::8888
 
 ### Arbitrary 表
 
-Arbitrary 是 mosdns 的一个插件。 使用 Arbitrary 可以直接任意构建应答。
+Arbitrary 是 mosdns 的一个插件。使用 Arbitrary 可以直接任意构建应答。
 
-格式:
+格式示例:
 
 ```txt
 # [qName]   [qClass]  [qType] [section] [RFC 1035 resource record]
@@ -108,20 +111,44 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 ```
 
 - `qName`: 请求的域名。默认是完整匹配。其他匹配规则:
-  - 以 `full:` 开头或省略，完整匹配。
-  - 以 `domain:` 开头，子域名匹配。
-  - 以 `keyword:` 开头，关键字匹配。
-  - 以 `regexp:` 开头，正则匹配(Golang 标准)。
+    - 以 `full:` 开头或省略，完整匹配。
+    - 以 `domain:` 开头，子域名匹配。
+    - 以 `keyword:` 开头，关键字匹配。
+    - 以 `regexp:` 开头，正则匹配(Golang 标准)。
 - `qClass`, `qType`: 请求的类型。可以是字符，必须大写，支持绝大数的类型。如不支持，也可以是数字。
 - `section`: 该资源记录在应答的位置。可以是 `ANSWER`, `NS`, `EXTRA`。
-- `RFC 1035 resource record`: RFC 1035 格式的资源记录 (resource record)。不支持换行，域名不支持缩写。具体格式可以参考 [Zone file](https://en.wikipedia.org/wiki/Zone_file) 或自行搜索。 
+- `RFC 1035 resource record`: RFC 1035 格式的资源记录 (resource record)
+  。不支持换行，域名不支持缩写。具体格式可以参考 [Zone file](https://en.wikipedia.org/wiki/Zone_file) 或自行搜索。
 
 如果 `qName`,  `qClass`, `qType` 成功匹配请求，则将对应的 `RFC 1035 resource record` 的记录放在应答 `section` 部分。然后返回应答。
 
-## 示例
+## 运行
+
+### 命令行启动
+
+示例:
 
 ```shell
 mosdns-cn -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geosite.dat:cn --local-ip geoip.dat:cn --remote-upstream https://8.8.8.8/dns-query --remote-domain 'geosite.dat:geolocation-!cn'
+```
+
+### 使用 `--service` 将 mosdns-cn 安装到系统服务
+
+- 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
+- 需要管理员或 root 权限。
+- `install` 无 `--dir` 参数时会默认使用程序所在的目录作为工作目录。
+- 安装成功后需手动 `mosdns-cn --service start` 启动服务。(只需手动启动一次。因为服务虽然会跟随系统自启，但安装成功后并不会)
+- 如需卸载，`mosdns-cn --service stop` + `mosdns-cn --service uninstall`。
+
+示例:
+
+```shell
+# 安装
+mosdns-cn --service install -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geosite.dat:cn --local-ip geoip.dat:cn --remote-upstream https://8.8.8.8/dns-query --remote-domain 'geosite.dat:geolocation-!cn'
+mosdns-cn --service start
+# 卸载
+mosdns-cn --service stop
+mosdns-cn --service uninstall
 ```
 
 ## 相关连接
@@ -137,3 +164,4 @@ mosdns-cn -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geo
 * [uber-go/zap](https://github.com/uber-go/zap): [LICENSE](https://github.com/uber-go/zap/blob/master/LICENSE.txt)
 * [miekg/dns](https://github.com/miekg/dns): [LICENSE](https://github.com/miekg/dns/blob/master/LICENSE)
 * [jessevdk/go-flags](https://github.com/jessevdk/go-flags): [BSD-3-Clause License](https://github.com/jessevdk/go-flags/blob/master/LICENSE)
+* [kardianos/service](https://github.com/kardianos/service): [zlib](https://github.com/kardianos/service/blob/master/LICENSE)

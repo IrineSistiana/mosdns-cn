@@ -48,10 +48,11 @@ type cnHandler struct {
 
 	localIPMatcher *msg_matcher.AAAAAIPMatcher
 	localLatency   time.Duration
+	minTTL         uint32
+	maxTTL         uint32
 }
 
 func (h *cnHandler) ServeDNS(ctx context.Context, qCtx *handler.Context, w dns_handler.ResponseWriter) {
-
 	r, err := h.serveDNS(ctx, qCtx)
 	if err != nil {
 		mlog.S().Warnf("query failed: %v", err)
@@ -112,8 +113,15 @@ func (h *cnHandler) serveDNS(ctx context.Context, qCtx *handler.Context) (*dns.M
 		return nil, err
 	}
 
+	if h.maxTTL > 0 {
+		dnsutils.ApplyMaximumTTL(r, h.maxTTL)
+	}
+	if h.minTTL > 0 {
+		dnsutils.ApplyMinimalTTL(r, h.minTTL)
+	}
+
 	if h.cache != nil && len(cacheKey) != 0 {
-		if r != nil && r.Rcode == dns.RcodeSuccess && len(r.Answer) > 0 {
+		if r.Rcode == dns.RcodeSuccess && len(r.Answer) > 0 {
 			if err := h.cache.Store(ctx, cacheKey, r, time.Duration(dnsutils.GetMinimalTTL(r))*time.Second); err != nil {
 				mlog.S().Warnf("failed to store cache: %v", err)
 			}
@@ -151,8 +159,6 @@ type result struct {
 }
 
 func (h *cnHandler) fallbackExchange(ctx context.Context, qCtx *handler.Context) (*dns.Msg, error) {
-	timer := pool.GetTimer(h.localLatency)
-	defer pool.ReleaseTimer(timer)
 	lc := make(chan *result, 1) // buffed chan
 	rc := make(chan *result, 1)
 	childCtx, cancel := context.WithCancel(ctx)
@@ -168,8 +174,17 @@ func (h *cnHandler) fallbackExchange(ctx context.Context, qCtx *handler.Context)
 		rc <- &result{m: r, err: err}
 	}()
 
+	var localLatencyTimer <-chan time.Time
 	var crc chan *result
 	var done int
+	if h.localLatency > 0 {
+		timer := pool.GetTimer(h.localLatency)
+		defer pool.ReleaseTimer(timer)
+		localLatencyTimer = timer.C
+	} else {
+		crc = rc
+	}
+
 	for {
 		if done >= 2 {
 			return nil, errors.New("all upstreams are failed")
@@ -177,7 +192,7 @@ func (h *cnHandler) fallbackExchange(ctx context.Context, qCtx *handler.Context)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-timer.C:
+		case <-localLatencyTimer:
 			crc = rc
 		case res := <-lc:
 			done++

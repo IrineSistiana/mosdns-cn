@@ -50,6 +50,8 @@ var version = "dev/unknown"
 var Opts struct {
 	ServerAddr      string   `short:"s" long:"server" description:"Server address"`
 	CacheSize       int      `short:"c" long:"cache" description:"Cache size"`
+	MinTTL          uint32   `long:"min-ttl" description:"Minimum TTL value for DNS responses, in seconds"`
+	MaxTTL          uint32   `long:"max-ttl" description:"Maximum TTL value for DNS responses, in seconds"`
 	Hosts           []string `long:"hosts" description:"Hosts"`
 	Arbitrary       []string `long:"arbitrary" description:"Arbitrary record"`
 	BlacklistDomain []string `long:"blacklist-domain" description:"Blacklist domain"`
@@ -61,7 +63,7 @@ var Opts struct {
 	LocalUpstream  []string `long:"local-upstream" description:"Local upstream"` // required if Upstream is empty
 	LocalIP        []string `long:"local-ip" description:"Local ip"`
 	LocalDomain    []string `long:"local-domain" description:"Local domain"`
-	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds" default:"50"`
+	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds"`
 	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
 
@@ -207,6 +209,13 @@ func initHandler() (*cnHandler, error) {
 
 	if Opts.CacheSize > 8 {
 		h.cache = mem_cache.NewMemCache(8, Opts.CacheSize/8, time.Minute)
+	}
+
+	if Opts.MaxTTL > 0 {
+		h.maxTTL = Opts.MaxTTL
+	}
+	if Opts.MinTTL > 0 {
+		h.minTTL = Opts.MinTTL
 	}
 
 	if len(Opts.Hosts) > 0 {

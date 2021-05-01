@@ -18,6 +18,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"github.com/IrineSistiana/mosdns/dispatcher/mlog"
@@ -30,6 +31,7 @@ import (
 	_ "github.com/IrineSistiana/mosdns/dispatcher/pkg/matcher/v2data"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/server"
 	"github.com/IrineSistiana/mosdns/dispatcher/pkg/upstream"
+	"github.com/IrineSistiana/mosdns/dispatcher/pkg/utils"
 	"github.com/jessevdk/go-flags"
 	"github.com/kardianos/service"
 	"go.uber.org/zap"
@@ -67,12 +69,14 @@ var Opts struct {
 	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
 
-	Debug        bool   `short:"v" long:"debug" description:"Verbose log"`
-	LogFile      string `long:"log-file" description:"Write logs to a file"`
-	WorkingDir   string `long:"dir" description:"Working dir"`
-	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically"`
-	Service      string `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart"`
-	RunAsService bool   `short:"S" description:"Run as a system service" hidden:"true"`
+	Debug        bool     `short:"v" long:"debug" description:"Verbose log"`
+	LogFile      string   `long:"log-file" description:"Write logs to a file"`
+	WorkingDir   string   `long:"dir" description:"Working dir"`
+	CD2Exe       bool     `long:"cd2exe" description:"Change working dir to executable automatically"`
+	Service      string   `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart"`
+	RunAsService bool     `short:"S" description:"Run as a system service" hidden:"true"`
+	CA           []string `long:"ca" description:"CA files"`
+	Insecure     bool     `long:"insecure" description:"Disable TLS certificate validation"`
 }
 
 func main() {
@@ -239,8 +243,17 @@ func initHandler() (*cnHandler, error) {
 		loadDomainMatcher("blacklist", Opts.BlacklistDomain, &h.blacklistDomainMatcher)
 	}
 
+	var caPool *x509.CertPool
+	if len(Opts.CA) > 0 {
+		pool, err := utils.LoadCertPool(Opts.CA)
+		if err != nil {
+			mlog.S().Fatalf("failed to load ca: %v", err)
+		}
+		caPool = pool
+	}
+
 	for i, s := range Opts.Upstream {
-		fu, err := initFastUpstream(s)
+		fu, err := initFastUpstream(s, caPool, Opts.Insecure)
 		if err != nil {
 			mlog.S().Fatalf("failed to init upstream #%d: %v", i, err)
 		}
@@ -250,6 +263,14 @@ func initHandler() (*cnHandler, error) {
 			trusted = true
 		}
 		h.upstream = append(h.upstream, wrapFU(fu, trusted))
+	}
+
+	if len(Opts.CA) > 0 {
+		pool, err := utils.LoadCertPool(Opts.CA)
+		if err != nil {
+			mlog.S().Fatalf("failed to load ca files: %v", err)
+		}
+		caPool = pool
 	}
 
 	// check args
@@ -268,7 +289,7 @@ func initHandler() (*cnHandler, error) {
 	}
 
 	for i, s := range Opts.LocalUpstream {
-		fu, err := initFastUpstream(s)
+		fu, err := initFastUpstream(s, caPool, Opts.Insecure)
 		if err != nil {
 			mlog.S().Fatalf("failed to init local upstream #%d: %v", i, err)
 		}
@@ -297,7 +318,7 @@ func initHandler() (*cnHandler, error) {
 	h.localLatency = time.Millisecond * time.Duration(Opts.LocalLatency)
 
 	for i, s := range Opts.RemoteUpstream {
-		fu, err := initFastUpstream(s)
+		fu, err := initFastUpstream(s, caPool, Opts.Insecure)
 		if err != nil {
 			mlog.S().Fatalf("failed to init remote upstream #%d: %v", i, err)
 		}
@@ -316,7 +337,7 @@ func initHandler() (*cnHandler, error) {
 	return h, nil
 }
 
-func initFastUpstream(s string) (*upstream.FastUpstream, error) {
+func initFastUpstream(s string, caPool *x509.CertPool, insecure bool) (*upstream.FastUpstream, error) {
 	if !strings.Contains(s, "://") {
 		s = "udp://" + s
 	}
@@ -326,8 +347,12 @@ func initFastUpstream(s string) (*upstream.FastUpstream, error) {
 	}
 	v := u.Query()
 	u.RawQuery = ""
-	opts := make([]upstream.Option, 0)
-	opts = append(opts, upstream.WithDialAddr(v.Get("netaddr")), upstream.WithSocks5(v.Get("socks5")))
+	opts := []upstream.Option{
+		upstream.WithRootCAs(caPool),
+		upstream.WithInsecureSkipVerify(insecure),
+		upstream.WithDialAddr(v.Get("netaddr")),
+		upstream.WithSocks5(v.Get("socks5")),
+	}
 	if s := v.Get("keepalive"); len(s) != 0 {
 		n, err := strconv.Atoi(s)
 		if err != nil {

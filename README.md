@@ -34,6 +34,8 @@
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
       --service:[install|uninstall|start|stop|restart] 控制系统服务。
+      --insecure          跳过 TLS 服务器证书验证。
+      --ca:               指定 CA 证书(PEM 格式)。这个参数可出现多次。
 ```
 
 ### 上游

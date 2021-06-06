@@ -5,7 +5,7 @@
 - 上游服务器支持 UDP/TCP/DoT/DoH 协议。支持 socks5 代理。
 - 支持连接复用，低响应延时。
 - 可选本地/远程 DNS 分流功能。可以同时根据域名和 IP 分流，更准确。
-- 无需编译，多平台一键安装。简单配置，开箱即用。
+- 无需编译，没有依赖。多平台一键安装，开箱即用。
 
 ## 参数
 
@@ -42,17 +42,13 @@
 
 ## 使用示例
 
-以下示例使用 [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geosite.dat` 域名和 `geoip.dat` IP 资源。
-
-### 命令行启动
-
 仅转发，不分流:
 
 ```shell
 mosdns-cn -s :53 --local-upstream https://8.8.8.8/dns-query
 ```
 
-根据域名和 IP 分流:
+根据 [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geosite.dat` 域名和 `geoip.dat` IP 资源分流:
 
 ```shell
 mosdns-cn -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geosite.dat:cn --local-ip geoip.dat:cn --remote-upstream https://8.8.8.8/dns-query --remote-domain 'geosite.dat:geolocation-!cn'
@@ -61,6 +57,7 @@ mosdns-cn -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geo
 ### 使用 `--service` 将 mosdns-cn 安装到系统服务
 
 - 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
+- 安装成功后程序将跟随系统自启。
 - 需要管理员或 root 权限。
 - `install` 无 `--dir` 参数时会默认使用程序所在的目录作为工作目录。
 
@@ -68,7 +65,7 @@ mosdns-cn -s :53 --local-upstream https://223.5.5.5/dns-query --local-domain geo
 
 ```shell
 # 安装 
-# mosdns-cn --service install [其他参数...]
+# mosdns-cn --service install [+其他参数...]
 mosdns-cn --service install -s :53 --local-upstream https://8.8.8.8/dns-query
 
 # 安装成功后需手动启动服务才能使用。因为服务虽然会跟随系统自启，但安装成功后并不会。
@@ -162,24 +159,19 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 
 各个功能运行顺序:
 
-- hosts
-- arbitrary
-- blacklist-domain 域名黑名单
-- cache 缓存
-- 转发至上游
+1. 查找 hosts
+2. 查找 arbitrary
+3. 查找 blacklist-domain 域名黑名单
+4. 查找 cache 缓存
+5. 转发至上游
 
-分流模式上游转发顺序:
+分流模式中上游的转发顺序:
 
-- 域名如果是 local-domain 本地域名。
-  - 转发至本地上游。
-  - 结束。
-- 域名如果是 remote-domain 远程域名。
-  - 转发至远程上游。
-  - 结束。
-- 转发至本地上游。
-- 如果本地上游应答包含 local-ip 本地 IP。
-  - 结束。(直接采用本地上游的结果)
-- 转发至远程上游。
+1. 请求的域名如果是 local-domain 本地域名。则直接转发至本地上游。
+2. 请求的域域名如果是 remote-domain 远程域名。则直接转发至远程上游。
+3. 否则，先转发至本地上游。
+   - 如果本地上游应答包含 local-ip 本地 IP。则直接采用本地上游的结果
+   - 否则转发至远程上游。
 
 ## 相关连接
 
@@ -190,8 +182,8 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 
 依赖
 
-* [IrineSistiana/mosdns](https://github.com/IrineSistiana/mosdns): [GPL-3.0 License](https://github.com/IrineSistiana/mosdns/blob/main/LICENSE)
-* [uber-go/zap](https://github.com/uber-go/zap): [LICENSE](https://github.com/uber-go/zap/blob/master/LICENSE.txt)
-* [miekg/dns](https://github.com/miekg/dns): [LICENSE](https://github.com/miekg/dns/blob/master/LICENSE)
-* [jessevdk/go-flags](https://github.com/jessevdk/go-flags): [BSD-3-Clause License](https://github.com/jessevdk/go-flags/blob/master/LICENSE)
-* [kardianos/service](https://github.com/kardianos/service): [zlib](https://github.com/kardianos/service/blob/master/LICENSE)
+- [IrineSistiana/mosdns](https://github.com/IrineSistiana/mosdns): [GPL-3.0 License](https://github.com/IrineSistiana/mosdns/blob/main/LICENSE)
+- [uber-go/zap](https://github.com/uber-go/zap): [LICENSE](https://github.com/uber-go/zap/blob/master/LICENSE.txt)
+- [miekg/dns](https://github.com/miekg/dns): [LICENSE](https://github.com/miekg/dns/blob/master/LICENSE)
+- [jessevdk/go-flags](https://github.com/jessevdk/go-flags): [BSD-3-Clause License](https://github.com/jessevdk/go-flags/blob/master/LICENSE)
+- [kardianos/service](https://github.com/kardianos/service): [zlib](https://github.com/kardianos/service/blob/master/LICENSE)

@@ -1,10 +1,10 @@
 # mosdns-cn
 
-只是一个 DNS 转发器。
+一个简单 DNS 转发器。
 
-- 上游服务器支持 UDP/TCP/DoT/DoH 协议。支持 socks5 代理。支持连接复用，低响应延时。
+- 上游服务器支持 UDP/TCP/DoT/DoH 协议。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-- 单一可执行文件，没有依赖，无需配置文件，三分钟一行命令开箱即用。
+- 无需配置文件。可一行命令自动安装至系统。只需三分钟开箱即用。
 
 ## 参数
 
@@ -12,8 +12,14 @@
   # 基本参数
   -s, --server:           (必需) 监听地址。会同时监听 UDP 和 TCP。
   -c, --cache:            (可选) 缓存大小。单位: 条。默认无缓存。
+      --lazy-cache-ttl:   (可选) Lazy cache 生存时间。单位: 秒。如果设定，应答会无视其自身的 TTL 值，在缓存中生
+                                存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
+                                lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
+      --lazy-cache-reply-ttl: (可选) 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
+                            
       --min-ttl:          (可选) 应答的最小 TTL。单位: 秒。
       --max-ttl:          (可选) 应答的最大 TTL。单位: 秒。
+ 
       --hosts:            (可选) Hosts 表。这个参数可出现多次，会从多个表载入数据。
       --arbitrary:        (可选) Arbitrary 表。这个参数可出现多次，会从多个表载入数据。
       --blacklist-domain: (可选) 黑名单域名表。这些域名会被 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
@@ -30,7 +36,7 @@
       --remote-domain:    (可选) 远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
 
   # 其他
-  -v, --debug             更详细的调试 log。你可以看到每个域名的分流的过程。
+  -v, --debug             更详细的调试 log。可以看到每个域名的分流的过程。
       --log-file:         将日志写入文件。
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
@@ -47,7 +53,8 @@
 mosdns-cn -s :53 --upstream https://8.8.8.8/dns-query
 ```
 
-根据 [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geosite.dat` 域名和 `geoip.dat` IP 资源分流本地/远程域名并且屏蔽广告域名:
+根据 [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geosite.dat` 域名和 `geoip.dat` IP
+资源分流本地/远程域名并且屏蔽广告域名:
 
 ```shell
 mosdns-cn -s :53 --blacklist-domain 'geosite.dat:category-ads-all' --local-upstream https://223.5.5.5/dns-query --local-domain 'geosite.dat:cn' --local-ip 'geoip.dat:cn' --remote-upstream https://8.8.8.8/dns-query --remote-domain 'geosite.dat:geolocation-!cn'
@@ -67,7 +74,7 @@ mosdns-cn -s :53 --blacklist-domain 'geosite.dat:category-ads-all' --local-upstr
 # mosdns-cn --service install [+其他参数...]
 mosdns-cn --service install -s :53 --upstream https://8.8.8.8/dns-query
 
-# 安装成功后需手动启动服务才能使用。因为服务虽然会跟随系统自启，但安装成功后并不会。
+# 安装成功后需手动启动服务才能使用。因为服务只会跟随系统自启，安装成功后并不会。
 mosdns-cn --service start
 
 # 卸载
@@ -178,12 +185,12 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。
 3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。
 4. 否则，先转发至本地上游获取应答。
-   - 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
-   - 否则使用远程上游。
+  - 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
+  - 否则使用远程上游。
 
 ## 相关连接
 
-- [mosdns](https://github.com/IrineSistiana/mosdns): 插件化 DNS 路由/转发器。
+- [mosdns](https://github.com/IrineSistiana/mosdns): 插件化 DNS 转发器。
 - [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat): 常用域名/IP 资源一步到位。
 
 ## Open Source Components / Libraries / Reference

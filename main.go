@@ -69,7 +69,7 @@ var Opts struct {
 	LocalUpstream  []string `long:"local-upstream" description:"Local upstream"` // required if Upstream is empty
 	LocalIP        []string `long:"local-ip" description:"Local ip"`
 	LocalDomain    []string `long:"local-domain" description:"Local domain"`
-	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds"`
+	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds" default:"50"`
 	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
 

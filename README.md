@@ -184,9 +184,9 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 1. 非 A/AAAA 类型的请求将直接使用 `--local-upstream` 本地上游。
 2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。
 3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。
-4. 否则，先转发至本地上游获取应答。
-  - 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
-  - 否则使用远程上游。
+4. 同时转发至本地上游获取应答。
+   1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
+   2. 否则使用远程上游。
 
 ## 相关连接
 

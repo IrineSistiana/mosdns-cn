@@ -23,6 +23,7 @@ import (
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/handler"
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/mlog"
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/executable_seq"
+	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/load_cache"
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/domain"
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/elem"
 	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/msg_matcher"
@@ -44,6 +45,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -411,6 +413,9 @@ func initEntry() (handler.ExecutableChainNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inner err, failed to init entry, %w", err)
 	}
+
+	load_cache.GetCache().Purge()
+	debug.FreeOSMemory()
 	return entry, nil
 }
 

@@ -16,6 +16,7 @@ builds:
       - arm64
       - mipsle
       - mips
+      - 386
     gomips:
       - hardfloat
       - softfloat

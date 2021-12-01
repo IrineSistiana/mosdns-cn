@@ -1,17 +1,28 @@
 # mosdns-cn
 
-一个简单 DNS 转发器。
+一个 DNS 转发器。
 
-- 上游服务器支持 UDP/TCP/DoT/DoH 协议。
+- 上游支持四大通用 DNS 协议。(UDP/TCP/DoT/DoH)
+- 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
+- 支持 lazy cache 机制，可以优化糟糕网络环境下的应答响应时间。
+- 支持 Redis 外部缓存，重启程序再也不会丢缓存了。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-- 无需配置文件。可一行命令自动安装至系统。只需三分钟开箱即用。
+  - 支持从文本文件载入数据。支持极简且通用的格式(IP 表是 CIDR，域名表就是域名)。用户可直接使用互联网上大部分域名/ IP 表。
+  - 支持从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
+  - 支持从多个文件载入数据。支持正则等多种匹配模式。
+- 常见平台支持一行命令自动随系统自启，一行命令自动卸载。
+- 无需配置文件，只需几行命令，三分钟开箱即用。
 
 ## 参数
 
 ```text
   # 基本参数
   -s, --server:           (必需) 监听地址。会同时监听 UDP 和 TCP。
-  -c, --cache:            (可选) 缓存大小。单位: 条。默认无缓存。
+  
+  -c, --cache:            (可选) 内置内存缓存大小。单位: 条。默认无缓存。
+      --redis-cache:      (可选) Redis 外部缓存地址。
+                                TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
+                                Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
       --lazy-cache-ttl:   (可选) Lazy cache 生存时间。单位: 秒。如果设定，应答会无视其自身的 TTL 值，在缓存中生
                                 存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
                                 lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
@@ -65,12 +76,11 @@ mosdns-cn -s :53 --blacklist-domain 'geosite.dat:category-ads-all' --local-upstr
 - 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
 - 安装成功后程序将跟随系统自启。
 - 需要管理员或 root 权限运行 mosdns-cn。
-- `--service install` 无 `--dir` 参数时会默认使用程序所在的目录作为工作目录。
 
 示例:
 
 ```shell
-# 安装 
+# 安装成系统服务(注册启动项) 
 # mosdns-cn --service install [+其他参数...]
 mosdns-cn --service install -s :53 --upstream https://8.8.8.8/dns-query
 

@@ -58,6 +58,7 @@ var Opts struct {
 	CacheSize         int      `short:"c" long:"cache" description:"Cache size"`
 	LazyCacheTTL      int      `long:"lazy-cache-ttl" description:"Responses will stay in the cache for configured seconds."`
 	LazyCacheReplyTTL int      `long:"lazy-cache-reply-ttl" description:"TTL value to use when replying with expired data."`
+	RedisCache        string   `long:"redis-cache" description:"Redis cache backend."`
 	MinTTL            uint32   `long:"min-ttl" description:"Minimum TTL value for DNS responses"`
 	MaxTTL            uint32   `long:"max-ttl" description:"Maximum TTL value for DNS responses"`
 	Hosts             []string `long:"hosts" description:"Hosts"`
@@ -255,9 +256,10 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		route = append(route, e)
 	}
 
-	if s := Opts.CacheSize; s > 8 {
+	if Opts.CacheSize > 0 || len(Opts.RedisCache) > 0 {
 		p, err := cache.Init(handler.NewBP("cache", cache.PluginType), &cache.Args{
-			Size:              s,
+			Size:              Opts.CacheSize,
+			Redis:             Opts.RedisCache,
 			LazyCacheTTL:      Opts.LazyCacheTTL,
 			LazyCacheReplyTTL: Opts.LazyCacheReplyTTL,
 		})

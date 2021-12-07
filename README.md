@@ -68,7 +68,7 @@ mosdns-cn -s :53 --upstream https://8.8.8.8/dns-query
 资源分流本地/远程域名并且屏蔽广告域名:
 
 ```shell
-mosdns-cn -s :53 --blacklist-domain 'geosite.dat:category-ads-all' --local-upstream https://223.5.5.5/dns-query --local-domain 'geosite.dat:cn' --local-ip 'geoip.dat:cn' --remote-upstream https://8.8.8.8/dns-query --remote-domain 'geosite.dat:geolocation-!cn'
+mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstream https://223.5.5.5/dns-query --local-domain "geosite.dat:cn" --local-ip "geoip.dat:cn" --remote-upstream https://8.8.8.8/dns-query --remote-domain "geosite.dat:geolocation-!cn"
 ```
 
 ### 使用 `--service` 一键将 mosdns-cn 安装到系统服务实现自启

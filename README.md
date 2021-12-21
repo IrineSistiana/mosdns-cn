@@ -18,21 +18,21 @@
 ```text
   -s, --server:           (必需) 监听地址。会同时监听 UDP 和 TCP。
   
-  -c, --cache:            (可选) 内置内存缓存大小。单位: 条。默认无缓存。
-      --redis-cache:      (可选) Redis 外部缓存地址。
-                                TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
-                                Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
-      --lazy-cache-ttl:   (可选) Lazy cache 生存时间。单位: 秒。如果设定，应答会无视其自身的 TTL 值，在缓存中生
-                                存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
-                                lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
-      --lazy-cache-reply-ttl: (可选) 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
+  -c, --cache:            内置内存缓存大小。单位: 条。默认无缓存。
+      --redis-cache:      Redis 外部缓存地址。
+                          TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
+                          Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
+      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。如果设定，应答会无视其自身的 TTL 值，在缓存中生
+                          存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
+                          lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
+      --lazy-cache-reply-ttl: 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
                             
-      --min-ttl:          (可选) 应答的最小 TTL。单位: 秒。
-      --max-ttl:          (可选) 应答的最大 TTL。单位: 秒。
+      --min-ttl:          应答的最小 TTL。单位: 秒。
+      --max-ttl:          应答的最大 TTL。单位: 秒。
  
-      --hosts:            (可选) Hosts 表。这个参数可出现多次，会从多个表载入数据。
-      --arbitrary:        (可选) Arbitrary 表。这个参数可出现多次，会从多个表载入数据。
-      --blacklist-domain: (可选) 黑名单域名表。这些域名会被 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
+      --hosts:            Hosts 表。这个参数可出现多次，会从多个表载入数据。
+      --arbitrary:        Arbitrary 表。这个参数可出现多次，会从多个表载入数据。
+      --blacklist-domain: 黑名单域名表。这些域名会被 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
       --ca:               指定验证服务器身份的 CA 证书。PEM 格式，可以是证书包(bundle)。这个参数可出现多次来载入多个文件。
       --insecure          跳过 TLS 服务器身份验证。谨慎使用。
   -v, --debug             更详细的调试 log。可以看到每个域名的分流的过程。
@@ -44,10 +44,10 @@
   # 如果需要分流，配置以下参数:
       --local-upstream:   (必需) 本地上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
       --local-ip:         (必需) 本地 IP 地址表。这个参数可出现多次，会从多个表载入数据。
-      --local-domain:     (可选) 本地域名表。这些域名会被本地上游解析。这个参数可出现多次，会从多个表载入数据。
-      --local-latency:    (可选) 本地上游服务器延时，单位毫秒。默认: 50。指示性参数，保护本地上游不被远程上游抢答。
+      --local-domain:     本地域名表。这些域名会被本地上游解析。这个参数可出现多次，会从多个表载入数据。
+      --local-latency:    本地上游服务器延时，单位毫秒。默认: 50。指示性参数，保护本地上游不被远程上游抢答。
       --remote-upstream:  (必需) 远程上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
-      --remote-domain:    (可选) 远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
+      --remote-domain:    远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
 
    # 其他
       --config:           从 yaml 配置文件载入参数。

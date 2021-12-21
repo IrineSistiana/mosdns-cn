@@ -5,18 +5,17 @@
 - 上游支持四大通用 DNS 协议。(UDP/TCP/DoT/DoH)
 - 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
 - 支持 lazy cache 机制，可以优化糟糕网络环境下的应答响应时间。
-- 支持 Redis 外部缓存，重启程序再也不会丢缓存了。
+- 支持 Redis 外部缓存，可以实现重启程序不会丢缓存。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-  - 支持从文本文件载入数据。支持极简且通用的格式(IP 表是 CIDR，域名表就是域名)。用户可直接使用互联网上大部分域名/ IP 表。
-  - 支持从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
-  - 支持从多个文件载入数据。支持正则等多种匹配模式。
-- 常见平台支持一行命令自动随系统自启，一行命令自动卸载。
-- 无需配置文件，只需几行命令，三分钟开箱即用。
+  - 支持从文本文件载入数据。
+    - 使用极简且通用的格式(IP 表是 CIDR，域名表就是域名，一条一行)。
+    - 域名支持正则，关键字等多种匹配模式。
+  - 支持直接从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
+  - 支持从多个文件载入数据。
 
-## 参数
+## 参数和命令
 
 ```text
-  # 基本参数
   -s, --server:           (必需) 监听地址。会同时监听 UDP 和 TCP。
   
   -c, --cache:            (可选) 内置内存缓存大小。单位: 条。默认无缓存。
@@ -34,9 +33,13 @@
       --hosts:            (可选) Hosts 表。这个参数可出现多次，会从多个表载入数据。
       --arbitrary:        (可选) Arbitrary 表。这个参数可出现多次，会从多个表载入数据。
       --blacklist-domain: (可选) 黑名单域名表。这些域名会被 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
+      --ca:               指定验证服务器身份的 CA 证书。PEM 格式，可以是证书包(bundle)。这个参数可出现多次来载入多个文件。
+      --insecure          跳过 TLS 服务器身份验证。谨慎使用。
+  -v, --debug             更详细的调试 log。可以看到每个域名的分流的过程。
+      --log-file:         将日志写入文件。
 
   # 上游
-  # 如果无需分流，只需配置这个参数:
+  # 如果无需分流，只需配置下面这个参数:
       --upstream:         (必需) 上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
   # 如果需要分流，配置以下参数:
       --local-upstream:   (必需) 本地上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
@@ -46,14 +49,39 @@
       --remote-upstream:  (必需) 远程上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
       --remote-domain:    (可选) 远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
 
-  # 其他
-  -v, --debug             更详细的调试 log。可以看到每个域名的分流的过程。
-      --log-file:         将日志写入文件。
+   # 其他
+      --config:           从文件载入参数。
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
       --service:[install|uninstall|start|stop|restart] 控制系统服务。
-      --insecure          跳过 TLS 服务器身份验证。谨慎使用。
-      --ca:               指定验证服务器身份的 CA 证书。PEM 格式，可以是证书包(bundle)。这个参数可出现多次来载入多个文件。
+      --gen-config:       生成一个 yaml 配置文件模板到指定位置。
+      --version           打印程序版本。
+```
+
+配置文件中可设定以下参数:
+
+```yaml
+server_addr: ""
+cache_size: 0
+lazy_cache_ttl: 0
+lazy_cache_reply_ttl: 0
+redis_cache: ""
+min_ttl: 0
+max_ttl: 0
+hosts: []
+arbitrary: []
+blacklist_domain: []
+insecure: false
+ca: []
+debug: false
+log_file: ""
+upstream: []
+local_upstream: []
+local_ip: []
+local_domain: []
+local_latency: 50
+remote_upstream: []
+remote_domain: []
 ```
 
 ## 使用示例
@@ -69,6 +97,15 @@ mosdns-cn -s :53 --upstream https://8.8.8.8/dns-query
 
 ```shell
 mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstream https://223.5.5.5/dns-query --local-domain "geosite.dat:cn" --local-ip "geoip.dat:cn" --remote-upstream https://8.8.8.8/dns-query --remote-domain "geosite.dat:geolocation-!cn"
+```
+
+使用配置文件:
+
+```shell
+# 生成配置文件模板到当前目录。
+mosdns-cn --gen-config ./my-config.yaml
+# 载入配置文件。
+mosdns-cn --config ./my-config.yaml
 ```
 
 ### 使用 `--service` 一键将 mosdns-cn 安装到系统服务实现自启
@@ -96,20 +133,24 @@ mosdns-cn --service uninstall
 
 ### 上游 upstream
 
-上游支持 4 种协议。示例:
+支持四种协议。省略 scheme 默认为 UDP 协议。省略端口号会使用默认值。格式示例:
 
 - UDP: `8.8.8.8`, `208.67.222.222:443`
 - TCP: `tcp://8.8.8.8`
-- DoT: `tls://8.8.8.8`, `tls://dns.google`
-- DoH: `https://8.8.8.8/dns-query`, `https://dns.google/dns-query`
+- DoT: `tls://dns.google`
+- DoH: `https://dns.google/dns-query`
 
 支持 3 个格外参数:
 
-- `netaddr` 可以手动指定服务器域名的实际地址(`ip:port`)。e.g. `tls://dns.google?netaddr=8.8.8.8:853`
-- `socks5` 通过 socks5 代理服务器连接上游。暂不支持 UDP 协议。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
-- `keepalive` 连接复用空连接保持时间。单位: 秒。不同协议默认值不同。DoH: 30 (默认启用连接复用)，TCP/DoT: 0 (默认禁用连接复用)。
-  - 启用连接复用后，只有第一个请求需要建立连接和握手，接下来的请求会在同一连接中直接传送。所以平均请求延时会和 UDP 一样低。
-  - 不是什么黑科技，是 RFC 标准。绝大多数知名的公共 DNS 提供商都支持连接复用。比如 Cloudflare，Google，AliDNS。
+- `netaddr` 手动指定服务器的实际地址，格式 `host:port`，端口号不可省略。会使用这个地址建立连接。
+  - 如果服务器地址包含域名，建议设定该参数来指定其 IP 地址，可以免去每次连接服务器还要解析服务器地址带来的格外消耗。
+  - 当本机运行 mosdns 并且将 DNS 指向自己时，必须为域名地址指定 IP 地址，否则会出现解析死循环。
+  - 可以用来配合端口转发。
+  - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
+- `socks5` 通过 socks5 代理服务器连接上游。暂不支持 UDP 协议和用户名密码认证。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
+- `keepalive` TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。启用连接复用后，只有第一个请求需要建立连接和握手，接下来的请求会在同一连接中直接传送。所以平均请求延时会和 UDP 一样低。
+  - DoH 默认 30，由 HTTP 协议默认支持。
+  - TCP/DoT 默认 0 (默认禁用连接复用)。不是什么黑科技，是 RFC 7766 标准，知名的公共 DNS 提供商都支持。由于 RFC 7766 的连接复用是建议并不是强制要求，服务器可以不支持。所以对于 TCP/DoT 默认禁用连接复用。
   - e.g. `tls://dns.google?keepalive=10`
 - 如需同时使用多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853&keepalive=10&socks5=127.0.0.1:1080`
@@ -143,14 +184,9 @@ mosdns-cn --service uninstall
 
 ```txt
 # 支持一行多个 IP
-dns.google 8.8.8.8 2001:4860:4860::8888 
-# 支持多行合并。下面的 IP 会和上面的数据合并在一起，而不是覆盖。
-dns.google 8.8.4.4   
-
-# 其他的匹配方式
-domain:dns.cloudflare.com 104.16.133.229
-keyword:dns.google 8.8.8.8
-regexp:^dns\.google$ 8.8.8.8
+dns.google 8.8.8.8 2001:4860:4860::8888 ...
+# 支持多行合并，会和上面的数据合并在一起，而不是覆盖。
+dns.google 8.8.4.4
 ```
 
 ### Arbitrary 表
@@ -195,12 +231,12 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。
 3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。
 4. 同时转发至本地上游获取应答。
-   1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
-   2. 否则使用远程上游。
+  1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
+  2. 否则使用远程上游。
 
 ## 相关连接
 
-- [mosdns](https://github.com/IrineSistiana/mosdns): 插件化 DNS 转发器。
+- [mosdns](https://github.com/IrineSistiana/mosdns): mosdns-cn 的主项目。功能更多。
 - [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat): 常用域名/IP 资源一步到位。
 
 ## Open Source Components / Libraries / Reference

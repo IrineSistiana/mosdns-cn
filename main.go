@@ -39,6 +39,7 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/kardianos/service"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 	"io"
 	"net/url"
 	"os"
@@ -53,52 +54,90 @@ import (
 
 var version = "dev/unknown"
 
-var Opts struct {
-	ServerAddr        string   `short:"s" long:"server" description:"Server address"`
-	CacheSize         int      `short:"c" long:"cache" description:"Cache size"`
-	LazyCacheTTL      int      `long:"lazy-cache-ttl" description:"Responses will stay in the cache for configured seconds."`
-	LazyCacheReplyTTL int      `long:"lazy-cache-reply-ttl" description:"TTL value to use when replying with expired data."`
-	RedisCache        string   `long:"redis-cache" description:"Redis cache backend."`
-	MinTTL            uint32   `long:"min-ttl" description:"Minimum TTL value for DNS responses"`
-	MaxTTL            uint32   `long:"max-ttl" description:"Maximum TTL value for DNS responses"`
-	Hosts             []string `long:"hosts" description:"Hosts"`
-	Arbitrary         []string `long:"arbitrary" description:"Arbitrary record"`
-	BlacklistDomain   []string `long:"blacklist-domain" description:"Blacklist domain"`
+type Opt struct {
+	ConfigFile        string   `long:"config" description:"Load settings from the yaml file" yaml:"-"`
+	ServerAddr        string   `short:"s" long:"server" description:"Server address" yaml:"server_addr"`
+	CacheSize         int      `short:"c" long:"cache" description:"Cache size"  yaml:"cache_size"`
+	LazyCacheTTL      int      `long:"lazy-cache-ttl" description:"Responses will stay in the cache for configured seconds." yaml:"lazy_cache_ttl"`
+	LazyCacheReplyTTL int      `long:"lazy-cache-reply-ttl" description:"TTL value to use when replying with expired data." yaml:"lazy_cache_reply_ttl"`
+	RedisCache        string   `long:"redis-cache" description:"Redis cache backend." yaml:"redis_cache"`
+	MinTTL            uint32   `long:"min-ttl" description:"Minimum TTL value for DNS responses" yaml:"min_ttl"`
+	MaxTTL            uint32   `long:"max-ttl" description:"Maximum TTL value for DNS responses" yaml:"max_ttl"`
+	Hosts             []string `long:"hosts" description:"Hosts" yaml:"hosts"`
+	Arbitrary         []string `long:"arbitrary" description:"Arbitrary record" yaml:"arbitrary"`
+	BlacklistDomain   []string `long:"blacklist-domain" description:"Blacklist domain" yaml:"blacklist_domain"`
+	Insecure          bool     `long:"insecure" description:"Disable TLS certificate validation" yaml:"insecure"`
+	CA                []string `long:"ca" description:"CA files" yaml:"ca"`
+	Debug             bool     `short:"v" long:"debug" description:"Verbose log" yaml:"debug"`
+	LogFile           string   `long:"log-file" description:"Write logs to a file" yaml:"log_file"`
 
 	// simple forwarder
-	Upstream []string `long:"upstream" description:"Upstream"`
+	Upstream []string `long:"upstream" description:"Upstream" yaml:"upstream"`
 
 	// local/remote forwarder
-	LocalUpstream  []string `long:"local-upstream" description:"Local upstream"` // required if Upstream is empty
-	LocalIP        []string `long:"local-ip" description:"Local ip"`
-	LocalDomain    []string `long:"local-domain" description:"Local domain"`
-	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds" default:"50"`
-	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream"` // required if Upstream is empty
-	RemoteDomain   []string `long:"remote-domain" description:"Remote domain"`
+	LocalUpstream  []string `long:"local-upstream" description:"Local upstream" yaml:"local_upstream"` // required if Upstream is empty
+	LocalIP        []string `long:"local-ip" description:"Local ip" yaml:"local_ip"`
+	LocalDomain    []string `long:"local-domain" description:"Local domain" yaml:"local_domain"`
+	LocalLatency   int      `long:"local-latency" description:"Local latency in milliseconds" default:"50" yaml:"local_latency"`
+	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream" yaml:"remote_upstream"` // required if Upstream is empty
+	RemoteDomain   []string `long:"remote-domain" description:"Remote domain" yaml:"remote_domain"`
 
-	Debug        bool     `short:"v" long:"debug" description:"Verbose log"`
-	LogFile      string   `long:"log-file" description:"Write logs to a file"`
-	WorkingDir   string   `long:"dir" description:"Working dir"`
-	CD2Exe       bool     `long:"cd2exe" description:"Change working dir to executable automatically"`
-	Service      string   `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart"`
-	RunAsService bool     `short:"S" description:"Run as a system service" hidden:"true"`
-	CA           []string `long:"ca" description:"CA files"`
-	Insecure     bool     `long:"insecure" description:"Disable TLS certificate validation"`
+	WorkingDir   string `long:"dir" description:"Working dir" yaml:"-"`
+	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically" yaml:"-"`
+	Service      string `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart" yaml:"-"`
+	RunAsService bool   `short:"S" description:"Run as a system service" hidden:"true" yaml:"-"`
+
+	GenConfig    string `long:"gen-config" description:"Generate a configuration file to the given path" yaml:"-"`
+	PrintVersion bool   `long:"version" description:"Print the program version" yaml:"-"`
 }
 
+var opt = new(Opt)
+
 func main() {
-	_, err := flags.Parse(&Opts)
+	_, err := flags.Parse(opt)
 	if err != nil { // error msg has been printed by flags
 		os.Exit(1)
 	}
 
-	if Opts.Debug {
+	if opt.PrintVersion {
+		fmt.Sprintln(version)
+		os.Exit(0)
+	}
+
+	if p := opt.GenConfig; len(p) > 0 {
+		f, err := os.Create(p)
+		if err != nil {
+			mlog.S().Fatal(err)
+		}
+		defer f.Close()
+
+		encoder := yaml.NewEncoder(f)
+		encoder.SetIndent(2)
+		defer encoder.Close()
+		err = encoder.Encode(opt)
+		if err != nil {
+			mlog.S().Fatal(err)
+		}
+		os.Exit(0)
+	}
+
+	if cf := opt.ConfigFile; len(cf) > 0 {
+		b, err := os.ReadFile(cf)
+		if err != nil {
+			mlog.S().Fatalf("failed to load configuration file: %v", err)
+		}
+		if err := yaml.Unmarshal(b, opt); err != nil {
+			mlog.S().Fatalf("failed to parse configuration file: %v", err)
+		}
+	}
+
+	if opt.Debug {
 		mlog.Level().SetLevel(zap.DebugLevel)
 	} else {
 		mlog.Level().SetLevel(zap.InfoLevel)
 	}
 
-	if Opts.CD2Exe {
+	if opt.CD2Exe {
 		execPath, err := os.Executable()
 		if err != nil {
 			mlog.S().Fatalf("failed to get the executable path: %v", err)
@@ -110,7 +149,7 @@ func main() {
 		mlog.S().Infof("current working directory is %s", wd)
 	}
 
-	if len(Opts.Service) == 0 && !Opts.RunAsService {
+	if len(opt.Service) == 0 && !opt.RunAsService {
 		go run()
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGTERM)
@@ -131,17 +170,17 @@ func main() {
 		mlog.S().Fatalf("failed to init service: %v", err)
 	}
 
-	if Opts.RunAsService {
+	if opt.RunAsService {
 		if err := s.Run(); err != nil {
 			mlog.S().Fatalf("service failed: %v", err)
 		}
 		os.Exit(0)
 	}
 
-	switch Opts.Service {
+	switch opt.Service {
 	case "install":
 		args := os.Args[1:]
-		if len(Opts.WorkingDir) == 0 {
+		if len(opt.WorkingDir) == 0 {
 			args = append(args, "--cd2exe")
 		}
 		args = append(args, "-S") // run as a service
@@ -156,12 +195,12 @@ func main() {
 	case "restart":
 		err = s.Restart()
 	default:
-		mlog.S().Fatalf("unknown service action [%s]", Opts.Service)
+		mlog.S().Fatalf("unknown service action [%s]", opt.Service)
 	}
 	if err != nil {
-		mlog.S().Fatalf("%s: %v", Opts.Service, err)
+		mlog.S().Fatalf("%s: %v", opt.Service, err)
 	} else {
-		mlog.S().Infof("%s: done", Opts.Service)
+		mlog.S().Infof("%s: done", opt.Service)
 		os.Exit(0)
 	}
 }
@@ -178,10 +217,10 @@ func (m *svc) Stop(s service.Service) error {
 }
 
 func run() {
-	if len(Opts.LogFile) > 0 {
-		f, err := os.OpenFile(Opts.LogFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+	if len(opt.LogFile) > 0 {
+		f, err := os.OpenFile(opt.LogFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 		if err != nil {
-			mlog.S().Fatalf("can not open log file: %v", err)
+			mlog.S().Fatalf("cannot open log file: %v", err)
 		}
 		io.MultiWriter()
 		mlog.Writer().Replace(f)
@@ -200,8 +239,8 @@ func run() {
 	}
 
 	// start servers
-	udpServer := server.NewServer("udp", Opts.ServerAddr, server.WithHandler(h))
-	tcpServer := server.NewServer("tcp", Opts.ServerAddr, server.WithHandler(h))
+	udpServer := server.NewServer("udp", opt.ServerAddr, server.WithHandler(h))
+	tcpServer := server.NewServer("tcp", opt.ServerAddr, server.WithHandler(h))
 	go func() {
 		err := udpServer.Start()
 		if err != nil {
@@ -231,37 +270,38 @@ func addFilePrefix(ss []string) []string {
 func initEntry() (handler.ExecutableChainNode, error) {
 	route := make([]handler.Executable, 0)
 
-	if len(Opts.Hosts) > 0 {
-		p, err := hosts.Init(handler.NewBP("hosts", hosts.PluginType), &hosts.Args{Hosts: addFilePrefix(Opts.Hosts)})
+	if len(opt.Hosts) > 0 {
+		p, err := hosts.Init(handler.NewBP("hosts", hosts.PluginType), &hosts.Args{Hosts: addFilePrefix(opt.Hosts)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to init hosts, %w", err)
 		}
 		route = append(route, p.(handler.Executable))
 	}
 
-	if len(Opts.Arbitrary) > 0 {
-		p, err := arbitrary.Init(handler.NewBP("arbitrary", arbitrary.PluginType), &arbitrary.Args{RR: addFilePrefix(Opts.Arbitrary)})
+	if len(opt.Arbitrary) > 0 {
+		p, err := arbitrary.Init(handler.NewBP("arbitrary", arbitrary.PluginType), &arbitrary.Args{RR: addFilePrefix(opt.Arbitrary)})
 		if err != nil {
 			return nil, fmt.Errorf("failed to init arbitrary, %w", err)
 		}
 		route = append(route, p.(handler.Executable))
 	}
 
-	if len(Opts.BlacklistDomain) > 0 {
-		mixMatcher, err := loadDomainMatcher(Opts.BlacklistDomain)
+	if len(opt.BlacklistDomain) > 0 {
+		mixMatcher, err := loadDomainMatcher(opt.BlacklistDomain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to init blacklist, %w", err)
 		}
 		e := &blackList{m: msg_matcher.NewQNameMatcher(mixMatcher)}
+		mlog.S().Infof("black domain files loaded, total length: %d", mixMatcher.Len())
 		route = append(route, e)
 	}
 
-	if Opts.CacheSize > 0 || len(Opts.RedisCache) > 0 {
+	if opt.CacheSize > 0 || len(opt.RedisCache) > 0 {
 		p, err := cache.Init(handler.NewBP("cache", cache.PluginType), &cache.Args{
-			Size:              Opts.CacheSize,
-			Redis:             Opts.RedisCache,
-			LazyCacheTTL:      Opts.LazyCacheTTL,
-			LazyCacheReplyTTL: Opts.LazyCacheReplyTTL,
+			Size:              opt.CacheSize,
+			Redis:             opt.RedisCache,
+			LazyCacheTTL:      opt.LazyCacheTTL,
+			LazyCacheReplyTTL: opt.LazyCacheReplyTTL,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to init cache, %w", err)
@@ -270,8 +310,8 @@ func initEntry() (handler.ExecutableChainNode, error) {
 	}
 
 	// init upstream
-	if len(Opts.Upstream) > 0 {
-		args, err := initFastForwardArgs(Opts.Upstream)
+	if len(opt.Upstream) > 0 {
+		args, err := initFastForwardArgs(opt.Upstream)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse upstream, %w", err)
 		}
@@ -281,13 +321,13 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		}
 		route = append(route, p.(handler.Executable))
 	} else {
-		if len(Opts.LocalUpstream) == 0 {
+		if len(opt.LocalUpstream) == 0 {
 			return nil, errors.New("missing local upstream")
 		}
-		if len(Opts.RemoteUpstream) == 0 {
+		if len(opt.RemoteUpstream) == 0 {
 			return nil, errors.New("missing remote upstream")
 		}
-		if len(Opts.LocalIP) == 0 {
+		if len(opt.LocalIP) == 0 {
 			return nil, errors.New("missing local ip")
 		}
 
@@ -299,7 +339,7 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		var remoteDomainMatcher handler.Matcher
 
 		// init local upstream
-		args, err := initFastForwardArgs(Opts.LocalUpstream)
+		args, err := initFastForwardArgs(opt.LocalUpstream)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse local upstream, %w", err)
 		}
@@ -310,7 +350,7 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		localFastForward = p.(handler.Executable)
 
 		// init remote upstream
-		args, err = initFastForwardArgs(Opts.RemoteUpstream)
+		args, err = initFastForwardArgs(opt.RemoteUpstream)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse remote upstream, %w", err)
 		}
@@ -320,28 +360,31 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		}
 		remoteFastForward = p.(handler.Executable)
 
-		if len(Opts.LocalIP) > 0 {
+		if len(opt.LocalIP) > 0 {
 			nl := netlist.NewList()
-			if err := netlist.BatchLoadFromFiles(nl, Opts.LocalIP); err != nil {
+			if err := netlist.BatchLoadFromFiles(nl, opt.LocalIP); err != nil {
 				return nil, fmt.Errorf("failed to load local ip file, %w", err)
 			}
 			nl.Sort()
+			mlog.S().Infof("local ip files loaded, total length: %d", nl.Len())
 			localIPMatcher = msg_matcher.NewAAAAAIPMatcher(nl)
 		}
 
-		if len(Opts.LocalDomain) > 0 {
-			matcher, err := loadDomainMatcher(Opts.LocalDomain)
+		if len(opt.LocalDomain) > 0 {
+			matcher, err := loadDomainMatcher(opt.LocalDomain)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load local domain file, %w", err)
 			}
+			mlog.S().Infof("local domain files loaded, total length: %d", matcher.Len())
 			localDomainMatcher = msg_matcher.NewQNameMatcher(matcher)
 		}
 
-		if len(Opts.RemoteDomain) > 0 {
-			matcher, err := loadDomainMatcher(Opts.RemoteDomain)
+		if len(opt.RemoteDomain) > 0 {
+			matcher, err := loadDomainMatcher(opt.RemoteDomain)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load remote domain file, %w", err)
 			}
+			mlog.S().Infof("remote domain files loaded, total length: %d", matcher.Len())
 			remoteDomainMatcher = msg_matcher.NewQNameMatcher(matcher)
 		}
 
@@ -385,10 +428,14 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		}
 		primaryRoot.LinkNext(primaryIf)
 
+		localLatency := opt.LocalLatency
+		if localLatency <= 0 {
+			localLatency = 50
+		}
 		c := &executable_seq.FallbackConfig{
 			Primary:       primaryRoot,
 			Secondary:     handler.WrapExecutable(remoteFastForward),
-			FastFallback:  Opts.LocalLatency,
+			FastFallback:  localLatency,
 			AlwaysStandby: true,
 		}
 		fallbackNode, err := executable_seq.ParseFallbackNode(c, mlog.L())
@@ -399,8 +446,8 @@ func initEntry() (handler.ExecutableChainNode, error) {
 	}
 
 	p, err := ttl.Init(handler.NewBP("ttl", ttl.PluginType), &ttl.Args{
-		MaximumTTL: Opts.MaxTTL,
-		MinimalTTL: Opts.MinTTL,
+		MaximumTTL: opt.MaxTTL,
+		MinimalTTL: opt.MinTTL,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init ttl, %w", err)
@@ -459,10 +506,10 @@ func initFastForwardArgs(upstreams []string) (*fastforward.Args, error) {
 			Trusted:            i == 0, // only first upstream is trusted
 			Socks5:             socks5,
 			IdleTimeout:        idt,
-			InsecureSkipVerify: Opts.Insecure,
+			InsecureSkipVerify: opt.Insecure,
 		})
 	}
-	ua.CA = Opts.CA
+	ua.CA = opt.CA
 	return ua, nil
 }
 

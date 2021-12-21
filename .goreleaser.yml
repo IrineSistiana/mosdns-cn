@@ -4,6 +4,7 @@ before:
     - go mod tidy
     # you may remove this if you don't need go generate
     - go generate ./...
+    - go run ./ --gen-config config-template.yaml
 builds:
   - env:
       - CGO_ENABLED=0
@@ -37,6 +38,10 @@ archives:
       - mosdns-cn
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}-{{ .Arm }}{{ end }}{{ if .Mips }}-{{ .Mips }}{{ end }}"
     format: zip
+    files:
+      - config-template.yaml
+      - LICENSE
+      - README.md
 changelog:
   skip: true
 

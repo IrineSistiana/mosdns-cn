@@ -50,7 +50,7 @@
       --remote-domain:    (可选) 远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
 
    # 其他
-      --config:           从文件载入参数。
+      --config:           从 yaml 配置文件载入参数。
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
       --service:[install|uninstall|start|stop|restart] 控制系统服务。
@@ -58,7 +58,7 @@
       --version           打印程序版本。
 ```
 
-配置文件中可设定以下参数:
+yaml 配置文件中可设定以下参数:
 
 ```yaml
 server_addr: ""

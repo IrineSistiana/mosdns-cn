@@ -100,7 +100,7 @@ func main() {
 	}
 
 	if opt.PrintVersion {
-		fmt.Sprintln(version)
+		fmt.Println(version)
 		os.Exit(0)
 	}
 

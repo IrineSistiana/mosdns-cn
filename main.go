@@ -82,8 +82,8 @@ type Opt struct {
 	RemoteUpstream []string `long:"remote-upstream" description:"Remote upstream" yaml:"remote_upstream"` // required if Upstream is empty
 	RemoteDomain   []string `long:"remote-domain" description:"Remote domain" yaml:"remote_domain"`
 
-	WorkingDir   string `long:"dir" description:"Working dir" yaml:"-"`
-	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically" yaml:"-"`
+	WorkingDir   string `long:"dir" description:"Working dir" yaml:"working_dir"`
+	CD2Exe       bool   `long:"cd2exe" description:"Change working dir to executable automatically" yaml:"cd2exe"`
 	Service      string `long:"service" description:"Service control" choice:"install" choice:"uninstall" choice:"start" choice:"stop" choice:"restart" yaml:"-"`
 	RunAsService bool   `short:"S" description:"Run as a system service" hidden:"true" yaml:"-"`
 
@@ -103,6 +103,8 @@ func main() {
 		fmt.Println(version)
 		os.Exit(0)
 	}
+
+	cd() // change wd for cmd line arguments
 
 	if p := opt.GenConfig; len(p) > 0 {
 		f, err := os.Create(p)
@@ -130,23 +132,12 @@ func main() {
 			mlog.S().Fatalf("failed to parse configuration file: %v", err)
 		}
 	}
+	cd() // change wd for config arguments
 
 	if opt.Debug {
 		mlog.Level().SetLevel(zap.DebugLevel)
 	} else {
 		mlog.Level().SetLevel(zap.InfoLevel)
-	}
-
-	if opt.CD2Exe {
-		execPath, err := os.Executable()
-		if err != nil {
-			mlog.S().Fatalf("failed to get the executable path: %v", err)
-		}
-		wd := filepath.Dir(execPath)
-		if err := os.Chdir(wd); err != nil {
-			mlog.S().Fatalf("failed to change the current working directory: %v", err)
-		}
-		mlog.S().Infof("current working directory is %s", wd)
 	}
 
 	if len(opt.Service) == 0 && !opt.RunAsService {
@@ -181,8 +172,13 @@ func main() {
 	case "install":
 		args := os.Args[1:]
 		if len(opt.WorkingDir) == 0 {
-			args = append(args, "--cd2exe")
+			dir, er := os.Getwd()
+			if er != nil {
+				mlog.S().Fatalf("failed to get current woriking dir: %v", err)
+			}
+			args = append(args, "--dir", dir)
 		}
+
 		args = append(args, "-S") // run as a service
 		svcConfig.Arguments = args
 		err = s.Install()
@@ -202,6 +198,27 @@ func main() {
 	} else {
 		mlog.S().Infof("%s: done", opt.Service)
 		os.Exit(0)
+	}
+}
+
+func cd() {
+	var d string
+	switch {
+	case opt.CD2Exe: // cd2exe has higher priority.
+		execPath, err := os.Executable()
+		if err != nil {
+			mlog.S().Fatalf("failed to get the executable path: %v", err)
+		}
+		d = filepath.Dir(execPath)
+	case len(opt.WorkingDir) > 0:
+		d = opt.WorkingDir
+	}
+
+	if len(d) != 0 {
+		if err := os.Chdir(d); err != nil {
+			mlog.S().Fatalf("failed to change the current working directory: %v", err)
+		}
+		mlog.S().Infof("changed the working directory to %s", d)
 	}
 }
 

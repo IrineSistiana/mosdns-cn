@@ -82,6 +82,9 @@ local_domain: []
 local_latency: 50
 remote_upstream: []
 remote_domain: []
+working_dir: ""
+cd2exe: false
+
 ```
 
 ## 使用示例
@@ -227,12 +230,12 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 
 分流模式中上游的转发顺序:
 
-1. 非 A/AAAA 类型的请求将直接使用 `--local-upstream` 本地上游。
-2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。
-3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。
+1. 非 A/AAAA 类型的请求将直接使用 `--local-upstream` 本地上游。结束。
+2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。结束。
+3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。结束。
 4. 同时转发至本地上游获取应答。
-  1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果
-  2. 否则使用远程上游。
+  1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果。结束。
+  2. 否则采用远程上游的结果。结束。
 
 ## 相关连接
 

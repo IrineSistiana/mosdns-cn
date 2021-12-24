@@ -116,6 +116,7 @@ mosdns-cn --config ./my-config.yaml
 - 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
 - 安装成功后程序将跟随系统自启。
 - 需要管理员或 root 权限运行 mosdns-cn。
+- 某些平台使用相对路径会导致服务找不到 yaml 配置文件和其他资源文件。如果遇到通过命令行运行可以正常启动但安装成服务后不能启动的玄学问题，可以尝试把所有路径换成绝对路径后重新安装 mosdns-cn。
 
 示例:
 

@@ -1,17 +1,17 @@
 # mosdns-cn
 
-一个 DNS 转发器。
+又一个 DNS 转发器。
 
 - 上游支持四大通用 DNS 协议。(UDP/TCP/DoT/DoH)
 - 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
 - 支持 lazy cache 机制，可以优化糟糕网络环境下的应答响应时间。
 - 支持 Redis 外部缓存，可以实现重启程序不会丢缓存。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-  - 支持从文本文件载入数据。
-    - 使用极简且通用的格式(IP 表是 CIDR，域名表就是域名，一条一行)。
-    - 域名支持正则，关键字等多种匹配模式。
+  - 支持从文本文件载入数据。使用极简且通用的格式(IP 表是 CIDR，域名表就是域名，一条一行)。
   - 支持直接从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
-  - 支持从多个文件载入数据。
+  - 支持从多个文件载入数据并自动合并。
+  - 极快的匹配速度。低内存和资源占用。载入再多域名也不用担心性能。
+- 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
 
 ## 参数和命令
 
@@ -148,7 +148,7 @@ mosdns-cn --service uninstall
 
 - `netaddr` 手动指定服务器的实际地址，格式 `host:port`，端口号不可省略。会使用这个地址建立连接。
   - 如果服务器地址包含域名，建议设定该参数来指定其 IP 地址，可以免去每次连接服务器还要解析服务器地址带来的格外消耗。
-  - 当本机运行 mosdns 并且将 DNS 指向自己时，必须为域名地址指定 IP 地址，否则会出现解析死循环。
+  - **当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址指定 IP 地址，否则会出现解析死循环。**
   - 可以用来配合端口转发。
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5` 通过 socks5 代理服务器连接上游。暂不支持 UDP 协议和用户名密码认证。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
@@ -162,32 +162,26 @@ mosdns-cn --service uninstall
 ### 域名表
 
 - 可以是 v2ray `geosite.dat` 文件。需用 `:` 指明类别。
-- 可以是文本文件。一个域名一行。匹配规则:
-  - 以 `domain:` 开头或省略，子域名匹配。
-  - 以 `keyword:` 开头，关键字匹配。
-  - 以 `regexp:` 开头，正则匹配(Golang 标准)。
-  - 以 `full:` 开头，完整匹配。
+- 可以是文本文件。一个域名规则一行。如果域名匹配方式被省略，则默认是 `domain` 匹配。域名匹配方式详见 [这里](#域名匹配规则)。
 
 ### IP 表
 
 - 可以是 v2ray `geoip.dat` 文件。需用 `:` 指明类别。
 - 可以是文本文件。每行一个 IP 或 CIDR。支持 IPv6。
 
+使用二分匹配，极快的匹配速度，载入再多的 IP 也不影响性能。每载入 1w IP 约占用 256KB 内存。
+
 ### Hosts 表
 
 格式:
 
-域名在前，IP 在后。支持一行多个 IP，支持 IPv6。支持多行合并。
+- 域名规则在前，IP 在后。支持一行多个 IP，支持 IPv6。支持多行合并。
+- 如果域名匹配规则的方式被省略，则默认是 `full` 完整匹配。域名匹配规则详见 [这里](#域名匹配规则)。
 
-- 以 `full:` 开头或省略，完整匹配。
-- 以 `domain:` 开头，域匹配。
-- 以 `keyword:` 开头，关键字匹配。
-- 以 `regexp:` 开头，正则匹配(Golang 标准)。
-
-示例:
+格式示例:
 
 ```txt
-# 支持一行多个 IP
+# [域名匹配规则] [IP...]
 dns.google 8.8.8.8 2001:4860:4860::8888 ...
 # 支持多行合并，会和上面的数据合并在一起，而不是覆盖。
 dns.google 8.8.4.4
@@ -200,24 +194,19 @@ Arbitrary 可以构建任意应答。
 格式示例:
 
 ```txt
-# [qName]   [qClass]  [qType] [section] [RFC 1035 resource record]
-dns.google  IN        A       ANSWER    dns.google. IN A 8.8.8.8
-dns.google  IN        A       ANSWER    dns.google. IN A 8.8.4.4
-dns.google  IN        AAAA    ANSWER    dns.google. IN AAAA 2001:4860:4860::8888
-example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. username.example.com. ( 2020091025 7200 3600 1209600 3600 )
+# [域名匹配规则]  [qClass]  [qType] [section] [RFC 1035 resource record ...]
+dns.google      IN        A       ANSWER    dns.google. IN A 8.8.8.8
+dns.google      IN        A       ANSWER    dns.google. IN A 8.8.4.4
+dns.google      IN        AAAA    ANSWER    dns.google. IN AAAA 2001:4860:4860::8888
+example.com     IN        A       NA        example.com.  IN  SOA   ns.example.com. username.example.com. ( 2020091025 7200 3600 1209600 3600 )
 ```
 
-- `qName`: 请求的域名。默认是完整匹配。其他匹配规则:
-  - 以 `full:` 开头或省略，完整匹配。
-  - 以 `domain:` 开头，子域名匹配。
-  - 以 `keyword:` 开头，关键字匹配。
-  - 以 `regexp:` 开头，正则匹配(Golang 标准)。
-- `qClass`, `qType`: 请求的类型。可以是字符，必须大写，支持绝大数的类型。如不支持，也可以是数字。
+- `域名匹配规则`: 如果匹配方式被省略，则默认是 `full` 完整匹配。 域名匹配方式详见 [域名匹配规则](#域名匹配规则)。
+- `qClass`, `qType`: 请求的类型。可以是字符，比如 `A`，`AAAA` 等，必须大写，理论上支持所有类型。如果遇到不支持，也可以换成对应数字。
 - `section`: 该资源记录在应答的位置。可以是 `ANSWER`, `NS`, `EXTRA`。
-- `RFC 1035 resource record`: RFC 1035 格式的资源记录 (resource record)
-  。不支持换行，域名不支持缩写。具体格式可以参考 [Zone file](https://en.wikipedia.org/wiki/Zone_file) 或自行搜索。
+- `RFC 1035 resource record`: RFC 1035 格式的资源记录 (resource record)。不支持换行，域名不支持缩写。具体格式可以参考 [Zone file](https://en.wikipedia.org/wiki/Zone_file) 或自行搜索。
 
-如果 `qName`,  `qClass`, `qType` 成功匹配请求，则将对应的 `RFC 1035 resource record` 的记录放在应答 `section` 部分。然后返回应答。
+如果 `域名匹配规则`,  `qClass`, `qType` 成功匹配请求，则将所有对应的 `RFC 1035 resource record` 的记录放在应答 `section` 部分。然后返回应答。
 
 ## 运行顺序
 
@@ -235,8 +224,24 @@ example.com IN        A       NA        example.com.  IN  SOA   ns.example.com. 
 2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。结束。
 3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。结束。
 4. 同时转发至本地上游获取应答。
-  1. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果。结束。
-  2. 否则采用远程上游的结果。结束。
+5. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果。结束。
+6. 否则采用远程上游的结果。结束。
+
+## 域名匹配规则
+
+域名规则有多个匹配方式 (和 v2ray 一致):
+
+- 以 `domain:` 开头，域匹配。e.g: `domain:google.com` 会匹配自身 `google.com`，以及其子域名 `www.google.com`, `maps.l.google.com` 等。
+- 以 `full:` 开头，完整匹配。e.g: `full:google.com` 只会匹配自身。
+- 以 `keyword:` 开头，关键字匹配。e.g: `keyword:google.com` 会匹配包含这个字段的域名，如 `google.com.hk`, `www.google.com.hk`。
+- 以 `regexp:` 开头，正则匹配([Golang 标准](https://github.com/google/re2/wiki/Syntax))。e.g: `regexp:.+\.google\.com$`。
+
+匹配顺序(也和 v2ray 一致): `full` > `domain` > `regexp` > `keyword`。
+
+性能:
+
+- `domain` 和 `full` 匹配使用 HashMap，O(1)。载入再多的域名也不影响性能。每载入 1w 域名约占用 1M 内存。
+- `keyword` 和 `regexp` 是遍历匹配，O(n)。不建议导入太多。
 
 ## 相关连接
 

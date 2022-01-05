@@ -20,27 +20,28 @@ package main
 import (
 	"errors"
 	"fmt"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/handler"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/mlog"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/executable_seq"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/load_cache"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/domain"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/elem"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/msg_matcher"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/netlist"
-	_ "github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/matcher/v2data"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/server"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/pkg/server/dns_handler"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/plugin/executable/arbitrary"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/plugin/executable/cache"
-	fastforward "github.com/IrineSistiana/mosdns/v2/dispatcher/plugin/executable/fast_forward"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/plugin/executable/hosts"
-	"github.com/IrineSistiana/mosdns/v2/dispatcher/plugin/executable/ttl"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/handler"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/mlog"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/executable_seq"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/load_cache"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/domain"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/elem"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/msg_matcher"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/netlist"
+	_ "github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/v2data"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/server"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/server/dns_handler"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/arbitrary"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/cache"
+	fastforward "github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/fast_forward"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/hosts"
+	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/ttl"
 	"github.com/jessevdk/go-flags"
 	"github.com/kardianos/service"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/signal"
@@ -251,21 +252,37 @@ func run() {
 		mlog.S().Fatalf("failed to init entry, %v", err)
 	}
 	h := &dns_handler.DefaultHandler{
-		Logger: mlog.L(),
+		Logger: mlog.L().Named("dns_handler"),
 		Entry:  entry,
 	}
 
 	// start servers
-	udpServer := server.NewServer("udp", opt.ServerAddr, server.WithHandler(h))
-	tcpServer := server.NewServer("tcp", opt.ServerAddr, server.WithHandler(h))
+
+	if len(opt.ServerAddr) == 0 {
+		mlog.S().Fatal("missing server address")
+	}
+	s := server.Server{
+		DNSHandler: h,
+		Logger:     mlog.L().Named("server"),
+	}
+	udpConn, err := net.ListenPacket("udp", opt.ServerAddr)
+	if err != nil {
+		mlog.S().Fatalf("failed to listen on udp socket, %v", err)
+	}
+	mlog.S().Infof("listening on udp socket %s", udpConn.LocalAddr())
+	l, err := net.Listen("tcp", opt.ServerAddr)
+	if err != nil {
+		mlog.S().Fatalf("failed to listen on tcp socket, %v", err)
+	}
+	mlog.S().Infof("listening on tcp socket %s", l.Addr())
 	go func() {
-		err := udpServer.Start()
+		err := s.ServeUDP(udpConn)
 		if err != nil {
 			mlog.S().Fatalf("udp server exited: %v", err)
 		}
 	}()
 	go func() {
-		err := tcpServer.Start()
+		err := s.ServeTCP(l)
 		if err != nil {
 			mlog.S().Fatalf("tcp server exited: %v", err)
 		}
@@ -523,6 +540,7 @@ func initFastForwardArgs(upstreams []string) (*fastforward.Args, error) {
 			Trusted:            i == 0, // only first upstream is trusted
 			Socks5:             socks5,
 			IdleTimeout:        idt,
+			MaxConns:           4,
 			InsecureSkipVerify: opt.Insecure,
 		})
 	}

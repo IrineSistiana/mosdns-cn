@@ -53,6 +53,8 @@
       --config:           从 yaml 配置文件载入参数。
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
+      
+   # 小工具命令(非设置性参数)
       --service:[install|uninstall|start|stop|restart] 控制系统服务。
       --gen-config:       生成一个 yaml 配置文件模板到指定位置。
       --version           打印程序版本。
@@ -84,7 +86,6 @@ remote_upstream: []
 remote_domain: []
 working_dir: ""
 cd2exe: false
-
 ```
 
 ## 使用示例
@@ -104,8 +105,10 @@ mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstr
 
 使用配置文件:
 
+好处: 直观，更改设置更方便，无需修改启动参数。
+
 ```shell
-# 生成配置文件模板到当前目录。
+# 生成一个配置文件模板到当前目录。
 mosdns-cn --gen-config ./my-config.yaml
 # 载入配置文件。
 mosdns-cn --config ./my-config.yaml
@@ -149,12 +152,11 @@ mosdns-cn --service uninstall
 - `netaddr` 手动指定服务器的实际地址，格式 `host:port`，端口号不可省略。会使用这个地址建立连接。
   - 如果服务器地址包含域名，建议设定该参数来指定其 IP 地址，可以免去每次连接服务器还要解析服务器地址带来的格外消耗。
   - **当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址指定 IP 地址，否则会出现解析死循环。**
-  - 可以用来配合端口转发。
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5` 通过 socks5 代理服务器连接上游。暂不支持 UDP 协议和用户名密码认证。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
 - `keepalive` TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。启用连接复用后，只有第一个请求需要建立连接和握手，接下来的请求会在同一连接中直接传送。所以平均请求延时会和 UDP 一样低。
-  - DoH 默认 30，由 HTTP 协议默认支持。
-  - TCP/DoT 默认 0 (默认禁用连接复用)。不是什么黑科技，是 RFC 7766 标准，知名的公共 DNS 提供商都支持。由于 RFC 7766 的连接复用是建议并不是强制要求，服务器可以不支持。所以对于 TCP/DoT 默认禁用连接复用。
+  - DoH 的连接复用由 HTTP 协议层实现。
+  - TCP/DoT 的连接复用不是什么黑科技，是 RFC 7766 标准。几乎所有知名公共服务器都完整支持 RFC 7766。
   - e.g. `tls://dns.google?keepalive=10`
 - 如需同时使用多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853&keepalive=10&socks5=127.0.0.1:1080`
@@ -172,6 +174,8 @@ mosdns-cn --service uninstall
 使用二分匹配，极快的匹配速度，载入再多的 IP 也不影响性能。每载入 1w IP 约占用 256KB 内存。
 
 ### Hosts 表
+
+注: 虽然都叫 hosts，但 mosdns-cn 所用的格式和平常 Win，Linux 系统内的那个 hosts 文件不一样。
 
 格式:
 
@@ -242,11 +246,6 @@ example.com     IN        A       NA        example.com.  IN  SOA   ns.example.c
 
 - `domain` 和 `full` 匹配使用 HashMap，O(1)。载入再多的域名也不影响性能。每载入 1w 域名约占用 1M 内存。
 - `keyword` 和 `regexp` 是遍历匹配，O(n)。不建议导入太多。
-
-## 相关连接
-
-- [mosdns](https://github.com/IrineSistiana/mosdns): mosdns-cn 的主项目。功能更多。
-- [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat): 常用域名/IP 资源一步到位。
 
 ## Open Source Components / Libraries / Reference
 

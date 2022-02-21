@@ -15,8 +15,8 @@ github.com/AdguardTeam/golibs v0.10.4 h1:TMBkablZC0IZOpRgg9fzAKlxxNhSN2YJq7qbgtu
 github.com/AdguardTeam/golibs v0.10.4/go.mod h1:rSfQRGHIdgfxriDDNgNJ7HmE5zRoURq8R+VdR81Zuzw=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/toml v0.4.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
-github.com/IrineSistiana/mosdns/v3 v3.1.2 h1:F8kexDm0B7AIRignPSFeg3hz2d++rMEoBSreJwVsXAI=
-github.com/IrineSistiana/mosdns/v3 v3.1.2/go.mod h1:OPFMAIXwPtPuWyVOz1JggfUEbgy0+MekyIgI5JedWes=
+github.com/IrineSistiana/mosdns/v3 v3.2.0 h1:YL+V9r76nLM2muYLy2XlLs0tQh9uCaLOzzjbcky8gvw=
+github.com/IrineSistiana/mosdns/v3 v3.2.0/go.mod h1:OPFMAIXwPtPuWyVOz1JggfUEbgy0+MekyIgI5JedWes=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/aead/poly1305 v0.0.0-20180717145839-3fee0db0b635 h1:52m0LGchQBBVqJRyYYufQuIbVqRawmubW3OFGqK1ekw=

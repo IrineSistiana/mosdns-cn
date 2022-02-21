@@ -2,14 +2,15 @@
 
 又一个 DNS 转发器。
 
-- 上游支持四大通用 DNS 协议。(UDP/TCP/DoT/DoH)
+- 上游支持 UDP/TCP/DoT/DoH 协议。
+- TCP/DoT/DoH 协议均默认支持连接复用，请求延时可以和 UDP 一样低。
 - 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
 - 支持 lazy cache 机制，可以优化糟糕网络环境下的应答响应时间。
 - 支持 Redis 外部缓存，可以实现重启程序不会丢缓存。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-  - 支持从文本文件载入数据。使用极简且通用的格式(IP 表是 CIDR，域名表就是域名，一条一行)。
+  - 支持从文本文件载入数据。通用格式(IP 就是 IP，域名就是域名，一条一行)。
   - 支持直接从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
-  - 支持从多个文件载入数据并自动合并。
+  - 支持从多个文件载入数据。
   - 极快的匹配速度。低内存和资源占用。载入再多域名也不用担心性能。
 - 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
 
@@ -140,23 +141,23 @@ mosdns-cn --service uninstall
 
 ### 上游 upstream
 
-支持四种协议。省略 scheme 默认为 UDP 协议。省略端口号会使用默认值。格式示例:
+支持四种协议。省略 scheme 默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
 
-- UDP: `8.8.8.8`, `208.67.222.222:443`
-- TCP: `tcp://8.8.8.8`
-- DoT: `tls://dns.google`
-- DoH: `https://dns.google/dns-query`
+- UDP: `8.8.8.8`, `208.67.222.222:443`。
+- TCP: `tcp://8.8.8.8`。
+- DoT: IP 直连 `tls://8.8.8.8` ，域名 `tls://dns.google`。
+- DoH: IP 直连 `https://8.8.8.8/dns-query` ，域名 `https://dns.google/dns-query` 。
+
+Tips: 优先使用 IP 直连。解析服务器地址会有格外性能消耗。
 
 支持 3 个格外参数:
 
-- `netaddr` 手动指定服务器的实际地址，格式 `host:port`，端口号不可省略。会使用这个地址建立连接。
-  - 如果服务器地址包含域名，建议设定该参数来指定其 IP 地址，可以免去每次连接服务器还要解析服务器地址带来的格外消耗。
+- `netaddr` 手动为域名地址指定 IP 和端口。省略端口号会使用协议默认值。
+  - 也可免去解析服务器地址带来的格外性能消耗。
   - **当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址指定 IP 地址，否则会出现解析死循环。**
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5` 通过 socks5 代理服务器连接上游。暂不支持 UDP 协议和用户名密码认证。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
-- `keepalive` TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。启用连接复用后，只有第一个请求需要建立连接和握手，接下来的请求会在同一连接中直接传送。所以平均请求延时会和 UDP 一样低。
-  - DoH 的连接复用由 HTTP 协议层实现。
-  - TCP/DoT 的连接复用不是什么黑科技，是 RFC 7766 标准。几乎所有知名公共服务器都完整支持 RFC 7766。
+- `keepalive` TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。
   - e.g. `tls://dns.google?keepalive=10`
 - 如需同时使用多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853&keepalive=10&socks5=127.0.0.1:1080`
@@ -245,7 +246,7 @@ example.com     IN        A       NA        example.com.  IN  SOA   ns.example.c
 性能:
 
 - `domain` 和 `full` 匹配使用 HashMap，O(1)。载入再多的域名也不影响性能。每载入 1w 域名约占用 1M 内存。
-- `keyword` 和 `regexp` 是遍历匹配，O(n)。不建议导入太多。
+- `keyword` 和 `regexp` 是遍历匹配，O(n)。
 
 ## Open Source Components / Libraries / Reference
 

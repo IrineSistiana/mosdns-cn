@@ -23,7 +23,7 @@
       --redis-cache:      Redis 外部缓存地址。
                           TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
                           Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
-      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。如果设定，应答会无视其自身的 TTL 值，在缓存中生
+      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。如果设定，应答会在缓存中生
                           存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
                           lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
       --lazy-cache-reply-ttl: 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
@@ -141,14 +141,14 @@ mosdns-cn --service uninstall
 
 ### 上游 upstream
 
-支持四种协议。省略 scheme 默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
+支持四种协议。省略协议默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
 
 - UDP: `8.8.8.8`, `208.67.222.222:443`。
 - TCP: `tcp://8.8.8.8`。
 - DoT: IP 直连 `tls://8.8.8.8` ，域名 `tls://dns.google`。
 - DoH: IP 直连 `https://8.8.8.8/dns-query` ，域名 `https://dns.google/dns-query` 。
 
-Tips: 优先使用 IP 直连。解析服务器地址会有格外性能消耗。
+Tips: 如果服务器支持的话，优先使用 IP 直连。解析服务器地址会有格外消耗。
 
 支持 3 个格外参数:
 

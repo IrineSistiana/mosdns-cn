@@ -39,8 +39,8 @@ import (
 	"github.com/jessevdk/go-flags"
 	"github.com/kardianos/service"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
-	"io"
 	"net"
 	"net/url"
 	"os"
@@ -240,8 +240,9 @@ func run() {
 		if err != nil {
 			mlog.S().Fatalf("cannot open log file: %v", err)
 		}
-		io.MultiWriter()
-		mlog.Writer().Replace(f)
+		fLocked := zapcore.Lock(f)
+		mlog.ErrWriter().Replace(fLocked)
+		mlog.InfoWriter().Replace(fLocked)
 	}
 
 	mlog.S().Infof("mosdns-cn ver: %s", version)
@@ -502,47 +503,49 @@ func initEntry() (handler.ExecutableChainNode, error) {
 	return entry, nil
 }
 
-func parseFastUpstream(s string) (addr, dialAddr, socks5 string, idt int, err error) {
+func parseFastUpstream(s string) (*fastforward.UpstreamConfig, error) {
 	if !strings.Contains(s, "://") {
 		s = "udp://" + s
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return "", "", "", 0, err
+		return nil, err
 	}
 	v := u.Query()
-	dialAddr = v.Get("netaddr")
-	socks5 = v.Get("socks5")
+	u.RawQuery = ""
+	uc := &fastforward.UpstreamConfig{
+		Addr:               u.String(),
+		DialAddr:           v.Get("netaddr"),
+		Socks5:             v.Get("socks5"),
+		EnableHTTP3:        v.Get("enable_http3") == "true",
+		EnablePipeline:     v.Get("enable_pipeline") == "true",
+		MaxConns:           4,
+		InsecureSkipVerify: opt.Insecure,
+	}
+	idt := 0
 	if s := v.Get("keepalive"); len(s) != 0 {
 		i, err := strconv.Atoi(s)
 		if err != nil {
-			return "", "", "", 0, fmt.Errorf("invalid keepalive arg, %w", err)
+			return nil, fmt.Errorf("invalid keepalive arg, %w", err)
 		}
 		idt = i
 	}
+	uc.IdleTimeout = idt
 
-	u.RawQuery = ""
-	addr = u.String()
-	return addr, dialAddr, socks5, idt, nil
+	return uc, nil
 }
 
 func initFastForwardArgs(upstreams []string) (*fastforward.Args, error) {
 	ua := new(fastforward.Args)
 	for i, s := range upstreams {
-		addr, dialAddr, socks5, idt, err := parseFastUpstream(s)
+		uc, err := parseFastUpstream(s)
 		if err != nil {
 			return nil, fmt.Errorf("invalid upstream address [%s], %w", s, err)
 		}
-
-		ua.Upstream = append(ua.Upstream, &fastforward.UpstreamConfig{
-			Addr:               addr,
-			DialAddr:           dialAddr,
-			Trusted:            i == 0, // only first upstream is trusted
-			Socks5:             socks5,
-			IdleTimeout:        idt,
-			MaxConns:           4,
-			InsecureSkipVerify: opt.Insecure,
-		})
+		if i == 0 {
+			uc.Trusted = true
+		}
+		ua.Upstream = append(ua.Upstream, uc)
 	}
 	ua.CA = opt.CA
 	return ua, nil

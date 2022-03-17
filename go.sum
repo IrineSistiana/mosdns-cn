@@ -17,6 +17,8 @@ github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03
 github.com/BurntSushi/toml v0.4.1/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbicEuybxQ=
 github.com/IrineSistiana/mosdns/v3 v3.5.2 h1:+/f/Q9i8bIYPH9aOu2B22g0is7WBUC5yY92ZD0gPkBs=
 github.com/IrineSistiana/mosdns/v3 v3.5.2/go.mod h1:DK7a8gRl8tCvC4BwR8+LykD622XDqHCVu5nsyYo/REA=
+github.com/IrineSistiana/quic-go v0.25.0-mod h1:i4NC0HzVEAbitcfoSK06YaeHL8Zz9WvOBs6SQBzV2BI=
+github.com/IrineSistiana/quic-go v0.25.0-mod/go.mod h1:YtzP8bxRVCBlO77yRanE264+fY/T2U9ZlW1AaHOsMOg=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da h1:KjTM2ks9d14ZYCvmHS9iAKVt9AyzRSqNU1qabPih5BY=
 github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da/go.mod h1:eHEWzANqSiWQsof+nXEI9bUVUyV6F53Fp89EuCh2EAA=
 github.com/aead/poly1305 v0.0.0-20180717145839-3fee0db0b635 h1:52m0LGchQBBVqJRyYYufQuIbVqRawmubW3OFGqK1ekw=

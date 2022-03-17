@@ -11,6 +11,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
+replace github.com/lucas-clemente/quic-go v0.25.0 => github.com/IrineSistiana/quic-go v0.25.0-mod
+
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/cheekybits/genny v1.0.0 // indirect

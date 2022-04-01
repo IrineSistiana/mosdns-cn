@@ -3,14 +3,9 @@
 一个 DNS 转发器。
 
 - 上游支持 UDP/TCP/DoT/DoH 协议。
-- TCP/DoT/DoH 协议均支持连接复用，0 RTT，延时和 UDP 一样低。
+- 所有协议均支持连接复用，无论用哪个协议延时都和 UDP 一样低。
 - 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
-- 支持 lazy cache 机制，可以优化糟糕网络环境下的应答响应时间。
-- 支持 Redis 外部缓存，可以实现重启程序不会丢缓存。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
-  - 支持从文本文件载入数据。通用格式(IP 就是 IP，域名就是域名，一条一行)。
-  - 支持直接从 v2ray 的 `geoip.dat` 和 `geosite.dat` 载入数据。
-  - 支持从多个文件载入数据。
 - 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
 
 ## 参数和命令
@@ -97,15 +92,13 @@ mosdns-cn -s :53 --upstream https://8.8.8.8/dns-query
 ```
 
 根据 [V2Ray 路由规则文件加强版](https://github.com/Loyalsoldier/v2ray-rules-dat) 的 `geosite.dat` 域名和 `geoip.dat` IP
-资源分流本地/远程域名并且屏蔽广告域名:
+资源分流本地/远程域名并且屏蔽广告域名。下载这两个文件放在 mosdns-cn 的目录以下命令就可以直接使用了。
 
 ```shell
 mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstream https://223.5.5.5/dns-query --local-domain "geosite.dat:cn" --local-ip "geoip.dat:cn" --remote-upstream https://8.8.8.8/dns-query --remote-domain "geosite.dat:geolocation-!cn"
 ```
 
 使用配置文件:
-
-好处: 直观，更改设置更方便，无需修改启动参数。
 
 ```shell
 # 生成一个配置文件模板到当前目录。
@@ -140,35 +133,33 @@ mosdns-cn --service uninstall
 
 ### 上游 upstream
 
-支持四种协议。省略协议默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
+省略协议默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
 
 - UDP: `8.8.8.8`, `208.67.222.222:443`。
 - TCP: `tcp://8.8.8.8`。
 - DoT: IP 直连 `tls://8.8.8.8` ，域名 `tls://dns.google`。
 - DoH: IP 直连 `https://8.8.8.8/dns-query` ，域名 `https://dns.google/dns-query` 。
 
-Tips: 如果服务器支持的话，优先使用 IP 直连。解析服务器地址会有格外消耗。
+除此之外，还支持一个特殊协议 UDPME。本质仍然是 UDP 协议，但要求服务器支持 EDNS0。可以借助 EDNS0 的机制过滤掉某些有问题的(假的) UDP 报文。实验性功能，使用条件特殊，不保证稳定性和可用性。运行命令 `dig +edns cloudflare.com @要测试的服务器`，观察返回的应答中是否包含 `EDNS: version: 0`。如果有则服务器支持 EDNS0。e.g. `udpme://8.8.8.8`。
 
-支持以下格外参数:
+注意: 如果服务器支持的话，优先使用 IP 直连。用域名地址的话每次连接服务器都要解析这个域名，会有格外消耗。并且当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址用 `netaddr` 参数指定 IP 地址，否则会出现解析死循环。
+
+地址 URL 中还可以配置以下参数:
 
 - `netaddr`: 有些服务器只能使用域名地址(TLS 必须有 SNI)，该参数可手动为域名地址指定 IP 和端口。省略端口号会使用协议默认值。
-  - **当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址指定 IP 地址，否则会出现解析死循环。**
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
-- `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 socks5 UDP 协议和用户名密码认证。e.g. `tls://dns.google?socks5=127.0.0.1:1080`
+- `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP socks5 协议和用户名密码认证。
+  - e.g. `tls://dns.google?socks5=127.0.0.1:1080`
+- `enable_http3=true`: 将使用 HTTP/3 连接 DoH 服务器。是新技术，目前只有部分服务器支持。
+  - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
+  - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
+- `enable_pipeline=true`: TCP/DoT 使用 pipeline 连接复用模式。性能更好延时更低效率更高。是新技术，目前只有部分服务器支持。
+  - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
+  - e.g. `tls://dns.google?enable_pipeline=true`
 - `keepalive`: TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。
   - e.g. `tls://8.8.8.8?keepalive=10`
-- 如需同时使用多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
+- 如需同时设置多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853&keepalive=10&socks5=127.0.0.1:1080`
-
-高级功能，可以启用最新的功能，但并非所有服务器都适用:
-
-- 参数 `enable_http3=true`: 将使用 HTTP/3 (aka. HTTP over QUIC) 连接 DoH 服务器。需要服务器支持。
-  - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
-- 参数 `enable_pipeline=true`: TCP/DoT 新的 pipeline 连接复用模式。性能更好延时更低效率更高。要服务器支持。
-  - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
-- 特殊协议 UDPME: 仍然是 UDP 协议，但要求服务器支持 EDNS0。可以借助 EDNS0 的机制过滤掉某些有问题的(假的) UDP 报文。实验性功能，使用条件特殊，不保证稳定性和可用性。
-  - 运行命令 `dig +edns cloudflare.com @要测试的服务器`，观察返回的应答中是否包含 `EDNS: version: 0`。如果有则服务器支持 EDNS0。
-  - e.g. `udpme://8.8.8.8`。
 
 ### 域名表
 
@@ -240,14 +231,14 @@ example.com     IN        A       NA        example.com.  IN  SOA   ns.example.c
 
 ## 域名匹配规则
 
-域名规则有多个匹配方式 (和 v2ray 一致):
+域名规则有多个匹配方式 (和 [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community) 一致):
 
 - 以 `domain:` 开头，域匹配。e.g: `domain:google.com` 会匹配自身 `google.com`，以及其子域名 `www.google.com`, `maps.l.google.com` 等。
 - 以 `full:` 开头，完整匹配。e.g: `full:google.com` 只会匹配自身。
 - 以 `keyword:` 开头，关键字匹配。e.g: `keyword:google.com` 会匹配包含这个字段的域名，如 `google.com.hk`, `www.google.com.hk`。
 - 以 `regexp:` 开头，正则匹配([Golang 标准](https://github.com/google/re2/wiki/Syntax))。e.g: `regexp:.+\.google\.com$`。
 
-匹配顺序(也和 v2ray 一致): `full` > `domain` > `regexp` > `keyword`。
+匹配优先级(和 v2ray 优先级逻辑一致): `full` > `domain` > `regexp` > `keyword`。
 
 ## Open Source Components / Libraries / Reference
 

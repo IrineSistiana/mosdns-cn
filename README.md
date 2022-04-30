@@ -3,7 +3,7 @@
 一个 DNS 转发器。
 
 - 上游支持 UDP/TCP/DoT/DoH 协议。
-- 所有协议均支持连接复用，无论用哪个协议延时都和 UDP 一样低。
+- 支持标准化的连接复用技术，免去握手开销，无论用哪个协议速度都和 UDP 一样快。
 - 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
 - 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
@@ -13,13 +13,11 @@
 ```text
   -s, --server:           (必需) 监听地址。会同时监听 UDP 和 TCP。
   
-  -c, --cache:            内置内存缓存大小。单位: 条。默认无缓存。
+  -c, --cache:            内置内存缓存大小。单位: 条。
       --redis-cache:      Redis 外部缓存地址。
                           TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
                           Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
-      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。如果设定，应答会在缓存中生
-                          存 lazy_cache_ttl 秒。如果命中过期的应答，则会立即返回 TTL 为
-                          lazy_cache_reply_ttl 的应答，然后后台去更新该应答。
+      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。
       --lazy-cache-reply-ttl: 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
                             
       --min-ttl:          应答的最小 TTL。单位: 秒。
@@ -49,8 +47,8 @@
       --dir:              工作目录。
       --cd2exe            自动将可执行文件的目录作为工作目录。
       
-   # 小工具命令(非设置性参数)
-      --service:[install|uninstall|start|stop|restart] 控制系统服务。
+   # 小工具命令
+      --service [install|uninstall|start|stop|restart] 控制系统服务。
       --gen-config:       生成一个 yaml 配置文件模板到指定位置。
       --version           打印程序版本。
 ```
@@ -103,6 +101,7 @@ mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstr
 ```shell
 # 生成一个配置文件模板到当前目录。
 mosdns-cn --gen-config ./my-config.yaml
+# 编辑配置。
 # 载入配置文件。
 mosdns-cn --config ./my-config.yaml
 ```
@@ -133,30 +132,31 @@ mosdns-cn --service uninstall
 
 ### 上游 upstream
 
-省略协议默认为 UDP 协议。省略端口号会使用协议默认值。格式示例:
+省略协议默认为 UDP 协议。省略端口号会使用协议默认值。
 
 - UDP: `8.8.8.8`, `208.67.222.222:443`。
 - TCP: `tcp://8.8.8.8`。
 - DoT: IP 直连 `tls://8.8.8.8` ，域名 `tls://dns.google`。
 - DoH: IP 直连 `https://8.8.8.8/dns-query` ，域名 `https://dns.google/dns-query` 。
+- UDPME: `udpme://8.8.8.8`。
+  - 这是一个能过滤假应答的方案。仍然是 UDP 协议，要求服务器支持 EDNS0 (大部分服务器都支持)。实验性功能。
+  - 测试服务器是否支持 EDNS0: 运行命令 `dig +edns 随便一个域名 @要测试的服务器IP`，观察返回的应答中是否包含 `EDNS: version: 0`。
 
-除此之外，还支持一个特殊协议 UDPME。本质仍然是 UDP 协议，但要求服务器支持 EDNS0。可以借助 EDNS0 的机制过滤掉某些有问题的(假的) UDP 报文。实验性功能，使用条件特殊，不保证稳定性和可用性。运行命令 `dig +edns cloudflare.com @要测试的服务器`，观察返回的应答中是否包含 `EDNS: version: 0`。如果有则服务器支持 EDNS0。e.g. `udpme://8.8.8.8`。
-
-注意: 如果服务器支持的话，优先使用 IP 直连。用域名地址的话每次连接服务器都要解析这个域名，会有格外消耗。并且当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址用 `netaddr` 参数指定 IP 地址，否则会出现解析死循环。
+注意: 务必使用优先使用 IP 直连。用域名地址的话每次连接服务器都要解析这个域名，会有格外消耗。并且当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址用 `netaddr` 参数指定 IP 地址，否则会出现解析死循环。
 
 地址 URL 中还可以配置以下参数:
 
 - `netaddr`: 有些服务器只能使用域名地址(TLS 必须有 SNI)，该参数可手动为域名地址指定 IP 和端口。省略端口号会使用协议默认值。
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP socks5 协议和用户名密码认证。
-  - e.g. `tls://dns.google?socks5=127.0.0.1:1080`
+  - e.g. `tls://8.8.8.8?socks5=127.0.0.1:1080`
 - `enable_http3=true`: 将使用 HTTP/3 连接 DoH 服务器。是新技术，目前只有部分服务器支持。
   - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
   - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
 - `enable_pipeline=true`: TCP/DoT 使用 pipeline 连接复用模式。性能更好延时更低效率更高。是新技术，目前只有部分服务器支持。
   - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
-  - e.g. `tls://dns.google?enable_pipeline=true`
-- `keepalive`: TCP/DoT/DoH 连接复用空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。
+  - e.g. `tls://8.8.8.8?enable_pipeline=true`
+- `keepalive`: TCP/DoT/DoH 连接复用最长空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。一般不需要改。
   - e.g. `tls://8.8.8.8?keepalive=10`
 - 如需同时设置多个参数，在地址后加 `?` 然后参数之间用 `&` 分隔
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853&keepalive=10&socks5=127.0.0.1:1080`
@@ -239,6 +239,10 @@ example.com     IN        A       NA        example.com.  IN  SOA   ns.example.c
 - 以 `regexp:` 开头，正则匹配([Golang 标准](https://github.com/google/re2/wiki/Syntax))。e.g: `regexp:.+\.google\.com$`。
 
 匹配优先级(和 v2ray 优先级逻辑一致): `full` > `domain` > `regexp` > `keyword`。
+
+## mosdns
+
+mosdns-cn 是基于 [mosdns](https://github.com/IrineSistiana/mosdns) 开发。mosdns 是一个可高度自定义的 DNS 转发器。
 
 ## Open Source Components / Libraries / Reference
 

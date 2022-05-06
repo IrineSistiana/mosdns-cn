@@ -2,9 +2,9 @@
 
 一个 DNS 转发器。
 
-- 上游支持 UDP/TCP/DoT/DoH 协议。
-- 支持标准化的连接复用技术，免去握手开销，无论用哪个协议速度都和 UDP 一样快。
-- 支持域名屏蔽(广告屏蔽)，修改 ttl，hosts 等常用功能。
+- 上游支持 UDP/TCP/DoT/DoH 协议。支持 sock5。
+- 支持标准化的连接复用技术，效率更高延时更低。
+- 支持请求屏蔽，修改 ttl，hosts 等常用功能。
 - 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
 - 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
 
@@ -106,11 +106,9 @@ mosdns-cn --gen-config ./my-config.yaml
 mosdns-cn --config ./my-config.yaml
 ```
 
-### 使用 `--service` 一键将 mosdns-cn 安装到系统服务实现自启
+### 使用 `--service` 将 mosdns-cn 注册到系统服务实现开机自启
 
 - 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
-- 安装成功后程序将跟随系统自启。
-- 需要管理员或 root 权限运行 mosdns-cn。
 - 某些平台使用相对路径会导致服务找不到 yaml 配置文件和其他资源文件。如果遇到通过命令行运行可以正常启动但安装成服务后不能启动的玄学问题，可以尝试把所有路径换成绝对路径后重新安装 mosdns-cn。
 
 示例:
@@ -139,21 +137,19 @@ mosdns-cn --service uninstall
 - DoT: IP 直连 `tls://8.8.8.8` ，域名 `tls://dns.google`。
 - DoH: IP 直连 `https://8.8.8.8/dns-query` ，域名 `https://dns.google/dns-query` 。
 - UDPME: `udpme://8.8.8.8`。
-  - 这是一个能过滤假应答的方案。仍然是 UDP 协议，要求服务器支持 EDNS0 (大部分服务器都支持)。实验性功能。
-  - 测试服务器是否支持 EDNS0: 运行命令 `dig +edns 随便一个域名 @要测试的服务器IP`，观察返回的应答中是否包含 `EDNS: version: 0`。
-
-注意: 务必使用优先使用 IP 直连。用域名地址的话每次连接服务器都要解析这个域名，会有格外消耗。并且当本机运行 mosdns 并且将系统 DNS 指向 mosdns 时，必须为域名地址用 `netaddr` 参数指定 IP 地址，否则会出现解析死循环。
+  - 这是个能过滤掉 UDP 抢答应答的方案。仍然是 UDP 协议。服务器必须支持 EDNS0。如果抢答者不支持 EDNS0，则可以 100% 过滤抢答应答。
+  - Tips: `dig +edns cloudflare.com @服务器地址` 观察返回是否有一行 `EDNS: version: 0` 来确定服务器是否支持 EDNS0。
 
 地址 URL 中还可以配置以下参数:
 
-- `netaddr`: 有些服务器只能使用域名地址(TLS 必须有 SNI)，该参数可手动为域名地址指定 IP 和端口。省略端口号会使用协议默认值。
+- `netaddr`: 为域名地址指定 IP。支持端口号。
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
-- `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP socks5 协议和用户名密码认证。
+- `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP 和 HTTP3 以及用户名密码认证。
   - e.g. `tls://8.8.8.8?socks5=127.0.0.1:1080`
-- `enable_http3=true`: 将使用 HTTP/3 连接 DoH 服务器。是新技术，目前只有部分服务器支持。
+- `enable_http3=true`: 将使用 HTTP/3 连接 DoH 服务器。目前只有部分服务器支持。
   - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
   - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
-- `enable_pipeline=true`: TCP/DoT 使用 pipeline 连接复用模式。性能更好延时更低效率更高。是新技术，目前只有部分服务器支持。
+- `enable_pipeline=true`: TCP/DoT 将使用 pipeline 连接复用模式。性能更好延时更低效率更高。目前只有部分服务器支持。
   - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
   - e.g. `tls://8.8.8.8?enable_pipeline=true`
 - `keepalive`: TCP/DoT/DoH 连接复用最长空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。一般不需要改。

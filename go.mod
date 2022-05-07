@@ -3,15 +3,13 @@ module github.com/IrineSistiana/mosdns-cn
 go 1.17
 
 require (
-	github.com/IrineSistiana/mosdns/v3 v3.7.3
+	github.com/IrineSistiana/mosdns/v3 v3.8.0
 	github.com/jessevdk/go-flags v1.5.0
 	github.com/kardianos/service v1.2.1
 	github.com/miekg/dns v1.1.48
 	go.uber.org/zap v1.21.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
-
-replace github.com/lucas-clemente/quic-go v0.25.0 => github.com/IrineSistiana/quic-go v0.25.0-mod
 
 require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -21,7 +19,7 @@ require (
 	github.com/go-redis/redis/v8 v8.11.5 // indirect
 	github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/lucas-clemente/quic-go v0.27.0 // indirect
+	github.com/lucas-clemente/quic-go v0.26.0 // indirect
 	github.com/marten-seemann/qpack v0.2.1 // indirect
 	github.com/marten-seemann/qtls-go1-16 v0.1.5 // indirect
 	github.com/marten-seemann/qtls-go1-17 v0.1.1 // indirect
@@ -36,7 +34,7 @@ require (
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3 // indirect
 	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220429233432-b5fbb4746d32 // indirect
+	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.10 // indirect
 	golang.org/x/xerrors v0.0.0-20220411194840-2f41105eb62f // indirect

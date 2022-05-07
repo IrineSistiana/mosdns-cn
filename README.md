@@ -146,10 +146,10 @@ mosdns-cn --service uninstall
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP 和 HTTP3 以及用户名密码认证。
   - e.g. `tls://8.8.8.8?socks5=127.0.0.1:1080`
-- `enable_http3=true`: 将使用 HTTP/3 连接 DoH 服务器。目前只有部分服务器支持。
+- `enable_http3=true`: DoH 使用 HTTP/3 连接服务器。必须确定服务器支持后再启用该选项。
   - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
   - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
-- `enable_pipeline=true`: TCP/DoT 将使用 pipeline 连接复用模式。性能更好延时更低效率更高。目前只有部分服务器支持。
+- `enable_pipeline=true`: TCP/DoT 使用 RFC 7766 新的 query pipelining 连接复用模式而不是 RFC 1035 的连接重用模式。所需连接更少，效率更高。必须确定服务器支持后再启用该选项，否则会出问题。
   - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
   - e.g. `tls://8.8.8.8?enable_pipeline=true`
 - `keepalive`: TCP/DoT/DoH 连接复用最长空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。一般不需要改。

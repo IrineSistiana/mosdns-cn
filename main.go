@@ -543,7 +543,7 @@ func initFastForwardArgs(upstreams []string) (*fastforward.Args, error) {
 
 func loadDomainMatcher(files []string) (*domain.MixMatcher[struct{}], error) {
 	mixMatcher := domain.NewMixMatcher[struct{}]()
-	if err := domain.BatchLoad[struct{}](mixMatcher, files, nil); err != nil {
+	if err := domain.BatchLoad[struct{}](mixMatcher, addFilePrefix(files), nil); err != nil {
 		return nil, err
 	}
 	return mixMatcher, nil

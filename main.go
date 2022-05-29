@@ -31,7 +31,6 @@ import (
 	_ "github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/matcher/v2data"
 	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/server"
 	"github.com/IrineSistiana/mosdns/v3/dispatcher/pkg/server/dns_handler"
-	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/arbitrary"
 	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/cache"
 	fastforward "github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/fast_forward"
 	"github.com/IrineSistiana/mosdns/v3/dispatcher/plugin/executable/hosts"
@@ -65,7 +64,6 @@ type Opt struct {
 	MinTTL            uint32   `long:"min-ttl" description:"Minimum TTL value for DNS responses" yaml:"min_ttl"`
 	MaxTTL            uint32   `long:"max-ttl" description:"Maximum TTL value for DNS responses" yaml:"max_ttl"`
 	Hosts             []string `long:"hosts" description:"Hosts" yaml:"hosts"`
-	Arbitrary         []string `long:"arbitrary" description:"Arbitrary record" yaml:"arbitrary"`
 	BlacklistDomain   []string `long:"blacklist-domain" description:"Blacklist domain" yaml:"blacklist_domain"`
 	Insecure          bool     `long:"insecure" description:"Disable TLS certificate validation" yaml:"insecure"`
 	CA                []string `long:"ca" description:"CA files" yaml:"ca"`
@@ -313,14 +311,6 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		route = append(route, p.(handler.Executable))
 	}
 
-	if len(opt.Arbitrary) > 0 {
-		p, err := arbitrary.Init(handler.NewBP("arbitrary", arbitrary.PluginType), &arbitrary.Args{RR: addFilePrefix(opt.Arbitrary)})
-		if err != nil {
-			return nil, fmt.Errorf("failed to init arbitrary, %w", err)
-		}
-		route = append(route, p.(handler.Executable))
-	}
-
 	if len(opt.BlacklistDomain) > 0 {
 		mixMatcher, err := loadDomainMatcher(opt.BlacklistDomain)
 		if err != nil {
@@ -551,9 +541,9 @@ func initFastForwardArgs(upstreams []string) (*fastforward.Args, error) {
 	return ua, nil
 }
 
-func loadDomainMatcher(files []string) (*domain.MixMatcher, error) {
-	mixMatcher := domain.NewMixMatcher(domain.WithDomainMatcher(domain.NewSimpleDomainMatcher()))
-	if err := domain.BatchLoadMatcherFromFiles(mixMatcher, files, nil); err != nil {
+func loadDomainMatcher(files []string) (*domain.MixMatcher[struct{}], error) {
+	mixMatcher := domain.NewMixMatcher[struct{}]()
+	if err := domain.BatchLoad[struct{}](mixMatcher, files, nil); err != nil {
 		return nil, err
 	}
 	return mixMatcher, nil

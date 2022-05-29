@@ -2,10 +2,10 @@
 
 一个 DNS 转发器。
 
-- 上游支持 UDP/TCP/DoT/DoH 协议。支持 sock5。
+- 支持主流加密 DNS 协议。
 - 支持标准化的连接复用技术，效率更高延时更低。
 - 支持请求屏蔽，修改 ttl，hosts 等常用功能。
-- 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。
+- 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。并发请求，无格外延时。
 - 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
 
 ## 参数和命令
@@ -24,7 +24,6 @@
       --max-ttl:          应答的最大 TTL。单位: 秒。
  
       --hosts:            Hosts 表。这个参数可出现多次，会从多个表载入数据。
-      --arbitrary:        Arbitrary 表。这个参数可出现多次，会从多个表载入数据。
       --blacklist-domain: 黑名单域名表。这些域名会被 NXDOMAIN 屏蔽。这个参数可出现多次，会从多个表载入数据。
       --ca:               指定验证服务器身份的 CA 证书。PEM 格式，可以是证书包(bundle)。这个参数可出现多次来载入多个文件。
       --insecure          跳过 TLS 服务器身份验证。谨慎使用。
@@ -53,7 +52,7 @@
       --version           打印程序版本。
 ```
 
-yaml 配置文件中可设定以下参数:
+yaml 配置支持以下参数:
 
 ```yaml
 server_addr: ""
@@ -64,7 +63,6 @@ redis_cache: ""
 min_ttl: 0
 max_ttl: 0
 hosts: []
-arbitrary: []
 blacklist_domain: []
 insecure: false
 ca: []
@@ -93,7 +91,7 @@ mosdns-cn -s :53 --upstream https://8.8.8.8/dns-query
 资源分流本地/远程域名并且屏蔽广告域名。下载这两个文件放在 mosdns-cn 的目录以下命令就可以直接使用了。
 
 ```shell
-mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstream https://223.5.5.5/dns-query --local-domain "geosite.dat:cn" --local-ip "geoip.dat:cn" --remote-upstream https://8.8.8.8/dns-query --remote-domain "geosite.dat:geolocation-!cn"
+mosdns-cn -s :53 --blacklist-domain "geosite.dat:category-ads-all" --local-upstream https://1.12.12.12/dns-query --local-domain "geosite.dat:cn" --local-ip "geoip.dat:cn" --remote-upstream https://8.8.8.8/dns-query --remote-domain "geosite.dat:geolocation-!cn"
 ```
 
 使用配置文件:
@@ -108,8 +106,8 @@ mosdns-cn --config ./my-config.yaml
 
 ### 使用 `--service` 将 mosdns-cn 注册到系统服务实现开机自启
 
-- 可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
-- 某些平台使用相对路径会导致服务找不到 yaml 配置文件和其他资源文件。如果遇到通过命令行运行可以正常启动但安装成服务后不能启动的玄学问题，可以尝试把所有路径换成绝对路径后重新安装 mosdns-cn。
+- 理论上可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
+- OSX 平台需要在系统设置的安全性与隐私里赋予 mosdns-cn 完全磁盘访问权限。否则 mosdns-cn 无法读取配置和资源文件。
 
 示例:
 
@@ -143,13 +141,15 @@ mosdns-cn --service uninstall
 地址 URL 中还可以配置以下参数:
 
 - `netaddr`: 为域名地址指定 IP。支持端口号。
+  - 如果本机自用的 mosdns-cn (本机系统的 DNS 服务器是为本机的 mosdns-cn)，**必须**为域名地址设定 IP，否则会出现解析死循环。
   - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
 - `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP 和 HTTP3 以及用户名密码认证。
   - e.g. `tls://8.8.8.8?socks5=127.0.0.1:1080`
 - `enable_http3=true`: DoH 使用 HTTP/3 连接服务器。必须确定服务器支持后再启用该选项。
-  - Google 搜 `http3 test`，有在线 HTTP3 测试的网站可以测试 DoH 服务器是否支持 HTTP/3。
+  - 已知 Google 和 Cloudflare 的 DoH 是支持 HTTP/3 的。
   - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
 - `enable_pipeline=true`: TCP/DoT 使用 RFC 7766 新的 query pipelining 连接复用模式而不是 RFC 1035 的连接重用模式。所需连接更少，效率更高。必须确定服务器支持后再启用该选项，否则会出问题。
+  - 已知 DNSPod，Google 和 Cloudflare 的 TCP/DoT 是支持该模式的。大多数知名公用 DNS 服务器都支持该模式。
   - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
   - e.g. `tls://8.8.8.8?enable_pipeline=true`
 - `keepalive`: TCP/DoT/DoH 连接复用最长空连接保持时间。单位: 秒。默认: TCP/DoT: 10。DoH: 30。一般不需要改。
@@ -173,7 +173,7 @@ mosdns-cn --service uninstall
 
 格式:
 
-- 域名规则在前，IP 在后。支持一行多个 IP，支持 IPv6。支持多行合并。
+- 域名规则在前，IP 在后，空格分割。支持一行多个 IP，支持 IPv6。
 - 如果域名匹配规则的方式被省略，则默认是 `full` 完整匹配。域名匹配规则详见 [这里](#域名匹配规则)。
 
 格式示例:
@@ -181,37 +181,13 @@ mosdns-cn --service uninstall
 ```txt
 # [域名匹配规则] [IP...]
 dns.google 8.8.8.8 2001:4860:4860::8888 ...
-# 支持多行合并，会和上面的数据合并在一起，而不是覆盖。
-dns.google 8.8.4.4
 ```
-
-### Arbitrary 表
-
-Arbitrary 可以构建任意应答。
-
-格式示例:
-
-```txt
-# [域名匹配规则]  [qClass]  [qType] [section] [RFC 1035 resource record ...]
-dns.google      IN        A       ANSWER    dns.google. IN A 8.8.8.8
-dns.google      IN        A       ANSWER    dns.google. IN A 8.8.4.4
-dns.google      IN        AAAA    ANSWER    dns.google. IN AAAA 2001:4860:4860::8888
-example.com     IN        A       NA        example.com.  IN  SOA   ns.example.com. username.example.com. ( 2020091025 7200 3600 1209600 3600 )
-```
-
-- `域名匹配规则`: 如果匹配方式被省略，则默认是 `full` 完整匹配。 域名匹配方式详见 [域名匹配规则](#域名匹配规则)。
-- `qClass`, `qType`: 请求的类型。可以是字符，比如 `A`，`AAAA` 等，必须大写，理论上支持所有类型。如果遇到不支持，也可以换成对应数字。
-- `section`: 该资源记录在应答的位置。可以是 `ANSWER`, `NS`, `EXTRA`。
-- `RFC 1035 resource record`: RFC 1035 格式的资源记录 (resource record)。不支持换行，域名不支持缩写。具体格式可以参考 [Zone file](https://en.wikipedia.org/wiki/Zone_file) 或自行搜索。
-
-如果 `域名匹配规则`,  `qClass`, `qType` 成功匹配请求，则将所有对应的 `RFC 1035 resource record` 的记录放在应答 `section` 部分。然后返回应答。
 
 ## 运行顺序
 
 各个功能运行顺序:
 
 1. 查找 hosts
-2. 查找 arbitrary
 3. 查找 blacklist-domain 域名黑名单
 4. 查找 cache 缓存
 5. 转发至上游
@@ -236,9 +212,9 @@ example.com     IN        A       NA        example.com.  IN  SOA   ns.example.c
 
 匹配优先级(和 v2ray 优先级逻辑一致): `full` > `domain` > `regexp` > `keyword`。
 
-## mosdns
+## 更多功能
 
-mosdns-cn 是基于 [mosdns](https://github.com/IrineSistiana/mosdns) 开发。mosdns 是一个可高度自定义的 DNS 转发器。
+如果需要更多功能，如更多分流策略等，请使用 [mosdns](https://github.com/IrineSistiana/mosdns)。
 
 ## Open Source Components / Libraries / Reference
 

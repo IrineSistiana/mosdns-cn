@@ -2,11 +2,11 @@
 
 一个 DNS 转发器。
 
-- 支持主流加密 DNS 协议。
-- 支持标准化的连接复用技术，效率更高延时更低。
+- 支持主流加密 DNS 协议。保护隐私。
+- 支持标准化的连接复用技术，免去握手开销。加密协议和传统明文协议一样快。
 - 支持请求屏蔽，修改 ttl，hosts 等常用功能。
-- 可选本地/远程 DNS 分流。可以同时根据域名和 IP 分流，更准确。并发请求，无格外延时。
-- 无需折腾。三分钟完成配置。常见平台支持命令行一键安装。
+- 可选本地/远程 DNS 分流。
+- 无需折腾。三分钟完成配置。常见平台支持命令行一键安装/自启。
 
 ## 参数和命令
 
@@ -17,8 +17,9 @@
       --redis-cache:      Redis 外部缓存地址。
                           TCP 连接: `redis://<user>:<password>@<host>:<port>/<db_number>`
                           Unix 连接: `unix://<user>:<password>@</path/to/redis.sock>?db=<db_number>`
-      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。
-      --lazy-cache-reply-ttl: 返回的过期缓存的 TTL 会被设定成该值。默认 30 (RFC 8767 的建议值)。
+      --lazy-cache-ttl:   Lazy cache 生存时间。单位: 秒。大于零会启用 lazy cache 缓存机制。
+                          建议值: 86400（1天）~ 259200（3天）
+      --lazy-cache-reply-ttl: Lazy cache 返回的过期应答的 TTL。单位: 秒。默认 30。
                             
       --min-ttl:          应答的最小 TTL。单位: 秒。
       --max-ttl:          应答的最大 TTL。单位: 秒。
@@ -35,11 +36,11 @@
       --upstream:         (必需) 上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
   # 如果需要分流，配置以下参数:
       --local-upstream:   (必需) 本地上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
-      --local-ip:         (必需) 本地 IP 地址表。这个参数可出现多次，会从多个表载入数据。
-      --local-domain:     本地域名表。这些域名会被本地上游解析。这个参数可出现多次，会从多个表载入数据。
+      --local-ip:         本地 IP 地址表。这个参数可出现多次，会从多个表载入数据。
+      --local-domain:     本地域名表。这个参数可出现多次，会从多个表载入数据。
       --local-latency:    本地上游服务器延时，单位毫秒。默认: 50。指示性参数，保护本地上游不被远程上游抢答。
       --remote-upstream:  (必需) 远程上游服务器。这个参数可出现多次来配置多个上游。会并发请求所有上游。
-      --remote-domain:    远程域名表。这些域名会被远程上游解析。这个参数可出现多次，会从多个表载入数据。
+      --remote-domain:    远程域名表。这个参数可出现多次，会从多个表载入数据。
 
    # 其他
       --config:           从 yaml 配置文件载入参数。
@@ -106,6 +107,7 @@ mosdns-cn --config ./my-config.yaml
 
 ### 使用 `--service` 将 mosdns-cn 注册到系统服务实现开机自启
 
+- 实测 Windows 全系列，Ubuntu，Debian 等主流的使用 systemd 的 Linux 发行版均可用。
 - 理论上可用于 `Windows XP+, Linux/(systemd | Upstart | SysV), and OSX/Launchd` 平台。
 - OSX 平台需要在系统设置的安全性与隐私里赋予 mosdns-cn 完全磁盘访问权限。否则 mosdns-cn 无法读取配置和资源文件。
 
@@ -126,6 +128,12 @@ mosdns-cn --service uninstall
 
 ## 详细参数说明
 
+### lazy cache 缓存
+
+lazy cache 的设计参考了 RFC 8767。应答会在缓存中存留 `--lazy-cache-ttl` 秒。应答自身的 `TTL` 仍然有效，如果请求命中过期的应答，则缓存会立即返回 TTL 为 `--lazy-cache-reply-ttl` 的应答，然后自动在后台发送请求更新数据。
+
+相比强行修改增加应答自身的 `TTL` 的方法，lazy cache 能提高命中率，同时还能保持数据新鲜度。
+
 ### 上游 upstream
 
 省略协议默认为 UDP 协议。省略端口号会使用协议默认值。
@@ -138,17 +146,18 @@ mosdns-cn --service uninstall
   - 这是个能过滤掉 UDP 抢答应答的方案。仍然是 UDP 协议。服务器必须支持 EDNS0。如果抢答者不支持 EDNS0，则可以 100% 过滤抢答应答。
   - Tips: `dig +edns cloudflare.com @服务器地址` 观察返回是否有一行 `EDNS: version: 0` 来确定服务器是否支持 EDNS0。
 
-地址 URL 中还可以配置以下参数:
+地址 URL 中还可以设定以下参数:
 
-- `netaddr`: 为域名地址指定 IP。支持端口号。
-  - 如果本机自用的 mosdns-cn (本机系统的 DNS 服务器是为本机的 mosdns-cn)，**必须**为域名地址设定 IP，否则会出现解析死循环。
-  - e.g. `tls://dns.google?netaddr=8.8.8.8:853`
+- `netaddr`: 为域名地址指定 IP。
+  - 设定后 mosdns-cn 就可以免去解析服务器域名，双栈选择等步骤，更快和服务器建立连接。
+  - 本机自用的 mosdns-cn (本机系统的 DNS 服务器是为本机的 mosdns-cn)，**必须**为域名地址设定 IP，否则会出现解析死循环。
+  - e.g. `tls://dns.google?netaddr=8.8.8.8`
 - `socks5`: 通过 socks5 代理服务器连接上游。暂不支持 UDP 和 HTTP3 以及用户名密码认证。
   - e.g. `tls://8.8.8.8?socks5=127.0.0.1:1080`
 - `enable_http3=true`: DoH 使用 HTTP/3 连接服务器。必须确定服务器支持后再启用该选项。
   - 已知 Google 和 Cloudflare 的 DoH 是支持 HTTP/3 的。
   - e.g. `https://8.8.8.8/dns-query?enable_http3=true`
-- `enable_pipeline=true`: TCP/DoT 使用 RFC 7766 新的 query pipelining 连接复用模式而不是 RFC 1035 的连接重用模式。所需连接更少，效率更高。必须确定服务器支持后再启用该选项，否则会出问题。
+- `enable_pipeline=true`: TCP/DoT 使用 RFC 7766 新的 query pipelining 连接复用模式而不是 RFC 1035 的连接重用模式。效率更高，延时更低。必须确定服务器支持后再启用该选项，否则会出问题。
   - 已知 DNSPod，Google 和 Cloudflare 的 TCP/DoT 是支持该模式的。大多数知名公用 DNS 服务器都支持该模式。
   - [mosdns](https://github.com/IrineSistiana/mosdns) 有一个命令可以探测服务器是否支持 pipeline。
   - e.g. `tls://8.8.8.8?enable_pipeline=true`
@@ -183,23 +192,35 @@ mosdns-cn --service uninstall
 dns.google 8.8.8.8 2001:4860:4860::8888 ...
 ```
 
-## 运行顺序
-
-各个功能运行顺序:
+## 程序运行顺序
 
 1. 查找 hosts
-3. 查找 blacklist-domain 域名黑名单
-4. 查找 cache 缓存
-5. 转发至上游
+2. 查找 blacklist-domain 域名黑名单
+3. 查找 cache 缓存
+4. 转发至上游/进行分流
 
-分流模式中上游的转发顺序:
+## 分流模式
 
-1. 非 A/AAAA 类型的请求将直接使用 `--local-upstream` 本地上游。结束。
-2. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。结束。
-3. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。结束。
-4. 同时转发至本地上游获取应答。
+mosdns-cn 会根据用户提供的数据采用以下分流模式。
+
+### 配置了 `--local-ip` 本地 IP
+
+1. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。结束。
+2. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。结束。
+3. 非 A/AAAA 类型的请求将直接使用 `--local-upstream` 本地上游。结束。
+4. 同时转发至本地和远程上游获取应答。
 5. 如果本地上游的应答包含 `--local-ip` 本地 IP。则直接采用本地上游的结果。结束。
 6. 否则采用远程上游的结果。结束。
+
+### 只配置了 `--local-domain` 本地域名
+
+1. 如果请求的域名匹配到 `--local-domain` 本地域名。则直接使用 `--local-upstream` 本地上游。结束。
+2. 其他所有请求会使用 `--remote-upstream` 远程上游。结束。
+
+### 只配置了 `--remote-domain` 远程域名
+
+1. 如果请求的域名匹配到 `--remote-domain` 远程域名。则直接使用`--remote-upstream` 远程上游。结束。
+2. 其他所有请求会使用 `--local-upstream` 本地上游。结束。
 
 ## 域名匹配规则
 
@@ -214,7 +235,7 @@ dns.google 8.8.8.8 2001:4860:4860::8888 ...
 
 ## 更多功能
 
-如果需要更多功能，如更多分流策略等，请使用 [mosdns](https://github.com/IrineSistiana/mosdns)。
+如果需要更多功能，比如自定义分流策略，配合 ipset/nftable 实现动态路由等，请使用 [mosdns](https://github.com/IrineSistiana/mosdns)。
 
 ## Open Source Components / Libraries / Reference
 

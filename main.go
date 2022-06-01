@@ -327,6 +327,7 @@ func initEntry() (handler.ExecutableChainNode, error) {
 			Redis:             opt.RedisCache,
 			LazyCacheTTL:      opt.LazyCacheTTL,
 			LazyCacheReplyTTL: opt.LazyCacheReplyTTL,
+			CacheEverything:   true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to init cache, %w", err)
@@ -352,16 +353,9 @@ func initEntry() (handler.ExecutableChainNode, error) {
 		if len(opt.RemoteUpstream) == 0 {
 			return nil, errors.New("missing remote upstream")
 		}
-		if len(opt.LocalIP) == 0 {
-			return nil, errors.New("missing local ip")
-		}
 
 		var localFastForward handler.Executable
 		var remoteFastForward handler.Executable
-
-		var localIPMatcher handler.Matcher
-		var localDomainMatcher handler.Matcher
-		var remoteDomainMatcher handler.Matcher
 
 		// init local upstream
 		args, err := initFastForwardArgs(opt.LocalUpstream)
@@ -384,6 +378,10 @@ func initEntry() (handler.ExecutableChainNode, error) {
 			return nil, fmt.Errorf("failed to init remote upstream, %w", err)
 		}
 		remoteFastForward = p.(handler.Executable)
+
+		var localIPMatcher handler.Matcher
+		var localDomainMatcher handler.Matcher
+		var remoteDomainMatcher handler.Matcher
 
 		if len(opt.LocalIP) > 0 {
 			nl := netlist.NewList()
@@ -413,18 +411,65 @@ func initEntry() (handler.ExecutableChainNode, error) {
 			remoteDomainMatcher = msg_matcher.NewQNameMatcher(matcher)
 		}
 
-		// forward non A/AAAA query to local upstream.
-		m := executable_seq.NagateMatcher(msg_matcher.NewQTypeMatcher(elem.NewIntMatcher([]int{1, 28})))
-		innerNode := handler.WrapExecutable(localFastForward)
-		innerNode.LinkNext(handler.WrapExecutable(&end{}))
-		node := &executable_seq.IfNode{
-			ConditionMatcher: m,
-			ExecutableNode:   innerNode,
-		}
-		route = append(route, node)
+		switch {
+		case localIPMatcher != nil:
+			// forward local domain to local upstream.
+			if localDomainMatcher != nil {
+				innerNode := handler.WrapExecutable(localFastForward)
+				innerNode.LinkNext(handler.WrapExecutable(&end{}))
+				node := &executable_seq.IfNode{
+					ConditionMatcher: localDomainMatcher,
+					ExecutableNode:   innerNode,
+				}
+				route = append(route, node)
+			}
 
-		// forward local domain to local upstream.
-		if localDomainMatcher != nil {
+			// forward remote domain to remote upstream.
+			if remoteDomainMatcher != nil {
+				innerNode := handler.WrapExecutable(remoteFastForward)
+				innerNode.LinkNext(handler.WrapExecutable(&end{}))
+				node := &executable_seq.IfNode{
+					ConditionMatcher: remoteDomainMatcher,
+					ExecutableNode:   innerNode,
+				}
+				route = append(route, node)
+			}
+
+			// forward non A/AAAA query to local upstream.
+			m := executable_seq.NagateMatcher(msg_matcher.NewQTypeMatcher(elem.NewIntMatcher([]int{1, 28})))
+			innerNode := handler.WrapExecutable(localFastForward)
+			innerNode.LinkNext(handler.WrapExecutable(&end{}))
+			node := &executable_seq.IfNode{
+				ConditionMatcher: m,
+				ExecutableNode:   innerNode,
+			}
+			route = append(route, node)
+
+			// distinguish local domain by ip
+			primaryRoot := handler.WrapExecutable(localFastForward)
+			primaryIf := &executable_seq.IfNode{
+				ConditionMatcher: executable_seq.NagateMatcher(localIPMatcher),
+				ExecutableNode:   handler.WrapExecutable(&dropResponse{}),
+			}
+			primaryRoot.LinkNext(primaryIf)
+
+			localLatency := opt.LocalLatency
+			if localLatency <= 0 {
+				localLatency = 50
+			}
+			c := &executable_seq.FallbackConfig{
+				Primary:       primaryRoot,
+				Secondary:     handler.WrapExecutable(remoteFastForward),
+				FastFallback:  localLatency,
+				AlwaysStandby: true,
+			}
+			fallbackNode, err := executable_seq.ParseFallbackNode(c, mlog.L())
+			if err != nil {
+				return nil, fmt.Errorf("inner err, failed to init fallback node, %w", err)
+			}
+			route = append(route, fallbackNode)
+		case localDomainMatcher != nil && remoteDomainMatcher == nil:
+			// forward local domain to local upstream.
 			innerNode := handler.WrapExecutable(localFastForward)
 			innerNode.LinkNext(handler.WrapExecutable(&end{}))
 			node := &executable_seq.IfNode{
@@ -432,10 +477,10 @@ func initEntry() (handler.ExecutableChainNode, error) {
 				ExecutableNode:   innerNode,
 			}
 			route = append(route, node)
-		}
-
-		// forward remote domain to remote upstream.
-		if remoteDomainMatcher != nil {
+			// forward others to remote upstream.
+			route = append(route, remoteFastForward)
+		case remoteDomainMatcher != nil && localDomainMatcher == nil:
+			// forward remote domain to remote upstream.
 			innerNode := handler.WrapExecutable(remoteFastForward)
 			innerNode.LinkNext(handler.WrapExecutable(&end{}))
 			node := &executable_seq.IfNode{
@@ -443,31 +488,12 @@ func initEntry() (handler.ExecutableChainNode, error) {
 				ExecutableNode:   innerNode,
 			}
 			route = append(route, node)
+			// forward others to local upstream.
+			route = append(route, localFastForward)
+		default:
+			return nil, errors.New("unsupported diversion mode")
 		}
 
-		// distinguish local domain by ip
-		primaryRoot := handler.WrapExecutable(localFastForward)
-		primaryIf := &executable_seq.IfNode{
-			ConditionMatcher: executable_seq.NagateMatcher(localIPMatcher),
-			ExecutableNode:   handler.WrapExecutable(&dropResponse{}),
-		}
-		primaryRoot.LinkNext(primaryIf)
-
-		localLatency := opt.LocalLatency
-		if localLatency <= 0 {
-			localLatency = 50
-		}
-		c := &executable_seq.FallbackConfig{
-			Primary:       primaryRoot,
-			Secondary:     handler.WrapExecutable(remoteFastForward),
-			FastFallback:  localLatency,
-			AlwaysStandby: true,
-		}
-		fallbackNode, err := executable_seq.ParseFallbackNode(c, mlog.L())
-		if err != nil {
-			return nil, fmt.Errorf("inner err, failed to init fallback node, %w", err)
-		}
-		route = append(route, fallbackNode)
 	}
 
 	p, err := ttl.Init(handler.NewBP("ttl", ttl.PluginType), &ttl.Args{
